@@ -16,6 +16,8 @@ sha2 = { workspace = true }
 kreuzberg-paddle-ocr = { workspace = true }
 image = { workspace = true }
 ort = { workspace = true }
+pdf-extract = { workspace = true }
+pdfium-render = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
