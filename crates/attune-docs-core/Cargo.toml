@@ -18,6 +18,8 @@ image = { workspace = true }
 ort = { workspace = true }
 pdf-extract = { workspace = true }
 pdfium-render = { workspace = true }
+docx-rs = { workspace = true }
+scraper = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
