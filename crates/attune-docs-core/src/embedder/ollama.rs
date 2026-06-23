@@ -64,9 +64,11 @@ impl Embedder for OllamaEmbedder {
                 Ok(r) => last_err = format!("status {}", r.status()),
                 Err(e) => last_err = format!("request: {e}"),
             }
-            // 退避：100ms, 200ms, 400ms。
-            let backoff = 100u64 * 2u64.pow(attempt);
-            tokio::time::sleep(Duration::from_millis(backoff)).await;
+            // 退避：100ms, 200ms（仅在还有后续重试时等待）。
+            if attempt < 2 {
+                let backoff = 100u64 * 2u64.pow(attempt);
+                tokio::time::sleep(Duration::from_millis(backoff)).await;
+            }
         }
         Err(DocError::EmbeddingFailed(last_err))
     }

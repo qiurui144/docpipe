@@ -100,12 +100,19 @@ paths:
                     items:
                       type: object
                       properties:
+                        chunk_id:
+                          type: string
+                          description: 块唯一标识符
                         text:
                           type: string
-                        start:
+                        page_refs:
+                          type: array
+                          items:
+                            type: integer
+                          description: 来源页码列表
+                        char_offset:
                           type: integer
-                        end:
-                          type: integer
+                          description: 文本在原文中的字符偏移量
 
   /embed:
     post:
@@ -375,7 +382,7 @@ components:
           description: 各后端服务状态
         ram_tier:
           type: string
-          enum: [lite, standard, high]
+          enum: [lite, full]
           description: 服务器内存档位
 
     AnnotateRequest:
