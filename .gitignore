@@ -5,3 +5,8 @@
 /tmp
 crates/attune-docs-core/tests/fixtures/*.pdf
 crates/attune-docs-core/tests/fixtures/*.docx
+clients/python/.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+*.pyc
