@@ -3,6 +3,7 @@
 pub mod error;
 pub mod types;
 pub mod parser;
+pub mod ocr;
 
 #[cfg(test)]
 mod scaffold_tests {
