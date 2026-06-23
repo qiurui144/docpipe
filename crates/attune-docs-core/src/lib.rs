@@ -7,6 +7,7 @@ pub mod ocr;
 pub mod chunker;
 pub mod embedder;
 pub mod store;
+pub mod annotator;
 
 #[cfg(test)]
 mod scaffold_tests {
