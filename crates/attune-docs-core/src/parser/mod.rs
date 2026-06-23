@@ -1,6 +1,7 @@
 //! 文档解析层 — trait DocParser + 各格式实现 + 格式自动检测。
 
 pub mod auto;
+pub mod pdf;
 pub mod pdf_render;
 
 use crate::error::Result;
