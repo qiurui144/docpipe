@@ -4,6 +4,7 @@ pub mod error;
 pub mod types;
 pub mod parser;
 pub mod ocr;
+pub mod chunker;
 
 #[cfg(test)]
 mod scaffold_tests {
