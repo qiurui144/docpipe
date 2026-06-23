@@ -23,20 +23,37 @@ pub fn models_present() -> bool {
 mod tests {
     use super::*;
 
+    // 序列化锁：两个测试都会修改进程级 XDG_DATA_HOME，并行运行会产生竞争；
+    // 持有此锁期间独占 env 修改权，彻底消除竞态。
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn models_dir_respects_xdg_data_home() {
-        // SAFETY: 单线程测试内设置 env，仅本测试读取。
+        let _guard = ENV_LOCK.lock().unwrap();
+        // 保存原值，测试后恢复，避免污染其他测试。
+        let prev = std::env::var_os("XDG_DATA_HOME");
         std::env::set_var("XDG_DATA_HOME", "/tmp/attune-docs-test-xdg");
         let d = models_dir();
+        // 先恢复再断言，确保 panic 不会跳过恢复逻辑。
+        match prev {
+            Some(v) => std::env::set_var("XDG_DATA_HOME", v),
+            None => std::env::remove_var("XDG_DATA_HOME"),
+        }
         assert!(d.ends_with("attune-docs/models/ppocr"));
         assert!(d.starts_with("/tmp/attune-docs-test-xdg"));
-        std::env::remove_var("XDG_DATA_HOME");
     }
 
     #[test]
     fn models_present_false_when_dir_missing() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        // 保存原值，测试后恢复。
+        let prev = std::env::var_os("XDG_DATA_HOME");
         std::env::set_var("XDG_DATA_HOME", "/tmp/attune-docs-test-absent-xyz");
-        assert!(!models_present());
-        std::env::remove_var("XDG_DATA_HOME");
+        let result = models_present();
+        match prev {
+            Some(v) => std::env::set_var("XDG_DATA_HOME", v),
+            None => std::env::remove_var("XDG_DATA_HOME"),
+        }
+        assert!(!result);
     }
 }
