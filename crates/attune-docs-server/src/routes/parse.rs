@@ -31,7 +31,11 @@ pub async fn parse(
                 file_bytes = Some(bytes.to_vec());
             }
             Some("config") => {
-                let txt = field.text().await.unwrap_or_default();
+                // 读取失败直接返回错误，不静默降级为默认配置
+                let txt = field
+                    .text()
+                    .await
+                    .map_err(|e| ApiError(DocError::Other(format!("config field read: {e}"))))?;
                 if !txt.trim().is_empty() {
                     config = serde_json::from_str(&txt)
                         .map_err(|e| ApiError(DocError::Other(format!("config json: {e}"))))?;

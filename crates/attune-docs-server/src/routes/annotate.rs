@@ -36,10 +36,19 @@ pub async fn annotate(
     State(state): State<Arc<AppState>>,
     Json(req): Json<AnnotateReq>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let source = if req.source.eq_ignore_ascii_case("human") {
+    // 仅接受 "ai" / "human"（忽略大小写），其他值返回 400
+    let source = if req.source.eq_ignore_ascii_case("ai") {
+        AnnotationSource::Ai
+    } else if req.source.eq_ignore_ascii_case("human") {
         AnnotationSource::Human
     } else {
-        AnnotationSource::Ai
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": "invalid-source",
+                "detail": "source must be 'ai' or 'human'"
+            })),
+        );
     };
     let bbox = req.locator.bbox.map(|b| BBox { x: b[0], y: b[1], w: b[2], h: b[3] });
     let item = state.sdk.annotate(AnnotateRequest {
