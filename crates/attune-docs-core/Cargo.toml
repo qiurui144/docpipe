@@ -13,6 +13,9 @@ uuid = { workspace = true }
 async-trait = { workspace = true }
 tempfile = { workspace = true }
 sha2 = { workspace = true }
+kreuzberg-paddle-ocr = { workspace = true }
+image = { workspace = true }
+ort = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

@@ -1,5 +1,8 @@
 //! OCR 后端 trait — KreuzbergBackend（默认，PP-OCRv4 ONNX）/ MinerUBackend（HTTP sidecar）。
 
+pub mod kreuzberg;
+pub mod models;
+
 use crate::error::Result;
 use crate::types::TextBlock;
 use async_trait::async_trait;
