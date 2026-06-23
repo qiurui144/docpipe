@@ -14,6 +14,15 @@ class AttuneDocsClient:
         self.base_url = base_url.rstrip("/")
         self._client = httpx.Client(timeout=timeout)
 
+    def close(self) -> None:
+        self._client.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
+
     def health(self) -> dict[str, Any]:
         r = self._client.get(f"{self.base_url}/v1/health")
         r.raise_for_status()
@@ -54,9 +63,10 @@ class AttuneDocsClient:
         return r.json()["chunks"]
 
     def embed(self, texts: list[str], model: Optional[str] = None) -> list[list[float]]:
-        r = self._client.post(
-            f"{self.base_url}/v1/embed", json={"texts": texts, "model": model}
-        )
+        body: dict[str, Any] = {"texts": texts}
+        if model is not None:
+            body["model"] = model
+        r = self._client.post(f"{self.base_url}/v1/embed", json=body)
         r.raise_for_status()
         return r.json()["embeddings"]
 
@@ -85,18 +95,17 @@ class AttuneDocsClient:
         source: str = "ai",
         skill_metadata: Optional[dict] = None,
     ) -> dict:
-        r = self._client.post(
-            f"{self.base_url}/v1/annotate",
-            json={
-                "doc_id": doc_id,
-                "original_text": original_text,
-                "content": content,
-                "label": label,
-                "color": color,
-                "locator": locator,
-                "source": source,
-                "skill_metadata": skill_metadata,
-            },
-        )
+        body: dict[str, Any] = {
+            "doc_id": doc_id,
+            "original_text": original_text,
+            "content": content,
+            "label": label,
+            "color": color,
+            "locator": locator,
+            "source": source,
+        }
+        if skill_metadata is not None:
+            body["skill_metadata"] = skill_metadata
+        r = self._client.post(f"{self.base_url}/v1/annotate", json=body)
         r.raise_for_status()
         return r.json()

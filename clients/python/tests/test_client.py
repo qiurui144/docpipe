@@ -1,3 +1,4 @@
+import json as _json
 import respx
 import httpx
 from attune_docs.client import AttuneDocsClient
@@ -30,6 +31,8 @@ def test_search_returns_results():
     res = c.search("query", top_k=1)
     assert len(res) == 1
     assert res[0]["chunk_id"] == "d:1"
+    body = _json.loads(respx.calls.last.request.content)
+    assert body["top_k"] == 1
 
 
 @respx.mock
