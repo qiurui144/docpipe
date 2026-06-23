@@ -1,4 +1,4 @@
-"""attune-docs HTTP 契约的 pydantic 镜像（spec §5）。"""
+"""docpipe HTTP 契约的 pydantic 镜像（spec §5）。"""
 from __future__ import annotations
 
 from typing import Any

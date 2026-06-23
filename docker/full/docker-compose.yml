@@ -2,8 +2,8 @@
 # 适用场景：重度 OCR 需求（学术论文 / 复杂表格）、需要精确公式解析的场景。
 # MinerU 版本锁定：mineru/mineru-api:0.10.1（更新前请查阅 DEVELOP.md 中的版本说明）。
 services:
-  attune-docs-server:
-    image: attune-docs-server:latest
+  docpipe-server:
+    image: docpipe-server:latest
     build:
       context: ../..
       dockerfile: Dockerfile
@@ -11,15 +11,15 @@ services:
       - "8200:8200"
     environment:
       BIND_ADDR: "0.0.0.0:8200"
-      DATABASE_URL: "sqlite:///data/attune-docs.db"
+      DATABASE_URL: "sqlite:///data/docpipe.db"
       OLLAMA_URL: "${OLLAMA_URL:-http://host.docker.internal:11434}"
       EMBED_MODEL: "${EMBED_MODEL:-bge-m3}"
-      SQLITE_PATH: "/data/attune-docs.db"
+      SQLITE_PATH: "/data/docpipe.db"
       MINERU_URL: "http://mineru:8000"
       MAX_OCR_CONCURRENCY: "2"
     volumes:
-      - attune_docs_data:/data
-      - attune_docs_models:/root/.local/share/attune-docs/models
+      - docpipe_data:/data
+      - docpipe_models:/root/.local/share/docpipe/models
     depends_on:
       mineru:
         condition: service_healthy
@@ -41,5 +41,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  attune_docs_data:
-  attune_docs_models:
+  docpipe_data:
+  docpipe_models:

@@ -1,4 +1,4 @@
-# Attune-Docs SDK — 开发者手册
+# docpipe SDK — 开发者手册
 
 ## 目录
 
@@ -20,12 +20,12 @@
 ## 工作区布局
 
 ```
-attune-docs/
-├── Cargo.toml              # workspace root，成员：attune-docs-core, attune-docs-server
+docpipe/
+├── Cargo.toml              # workspace root，成员：docpipe-core, docpipe-server
 ├── Cargo.lock
 ├── crates/
-│   ├── attune-docs-core/   # 库 crate：traits、types、parser、OCR、chunker、embedder、store
-│   └── attune-docs-server/ # binary crate：axum HTTP 服务
+│   ├── docpipe-core/   # 库 crate：traits、types、parser、OCR、chunker、embedder、store
+│   └── docpipe-server/ # binary crate：axum HTTP 服务
 ├── clients/
 │   ├── python/             # Python 客户端（pytest 测试）
 │   └── typescript/         # TypeScript 客户端（vitest 测试）
@@ -53,14 +53,14 @@ rustup toolchain install 1.85
 cargo build --workspace
 
 # 仅构建 server binary
-cargo build -p attune-docs-server
+cargo build -p docpipe-server
 ```
 
 ### Release 构建
 
 ```bash
-cargo build --release --bin attune-docs-server
-# 产物：target/release/attune-docs-server
+cargo build --release --bin docpipe-server
+# 产物：target/release/docpipe-server
 ```
 
 ### Docker 镜像构建
@@ -88,7 +88,7 @@ https://github.com/bblanchon/pdfium-binaries/releases
 ```
 
 **匹配版本**：下载时选择与 `pdfium-render = "0.9"` ABI 匹配的版本。查阅
-`crates/attune-docs-core/Cargo.toml` 中 `pdfium-render` 的确切版本号，然后在
+`crates/docpipe-core/Cargo.toml` 中 `pdfium-render` 的确切版本号，然后在
 pdfium-binaries release 页面选取对应的构建（通常是最近稳定 chromium pdfium tag）。
 
 **本地开发安装**：
@@ -115,14 +115,14 @@ v1.0 **不自动下载模型**：`KreuzbergBackend::new()` 在模型缺失时返
 服务启动即失败（`AppState::from_config` 会因此退出）。必须先把以下 4 个文件放到模型目录：
 
 ```
-~/.local/share/attune-docs/models/ppocr/
+~/.local/share/docpipe/models/ppocr/
   ├── ch_PP-OCRv5_det_mobile.onnx        # ~4.7 MB  检测  (源 SWHL/RapidOCR PP-OCRv4 det)
   ├── ch_ppocr_mobile_v2.0_cls.onnx      # ~0.6 MB  方向分类
   ├── ch_PP-OCRv5_rec_mobile.onnx        # ~10.9 MB 识别  (源 SWHL/RapidOCR PP-OCRv4 rec)
   └── ppocr_keys_v1.txt                  # 字典 (PaddleOCR ppocr_keys_v1.txt 包装而成)
 ```
 
-目录可经 `XDG_DATA_HOME` 覆盖；容器内对应 `/root/.local/share/attune-docs/models/`（compose 已挂载 volume）。
+目录可经 `XDG_DATA_HOME` 覆盖；容器内对应 `/root/.local/share/docpipe/models/`（compose 已挂载 volume）。
 
 **⚠️ 字典格式硬约束（否则 OCR 输出乱码且置信度仍很高）**：`ppocr_keys_v1.txt` 必须是
 **无 BOM、LF 换行的 UTF-8**，内容为 `#\n` + 原始字典（每行一字）+ `\n ` 结尾（`#` 前缀行 + 末尾空格行
@@ -140,11 +140,11 @@ v1.0 **不自动下载模型**：`KreuzbergBackend::new()` 在模型缺失时返
 ```bash
 export PDFIUM_DYNAMIC_LIB_PATH="$(pwd)/docker/pdfium/libpdfium.so"
 export LD_LIBRARY_PATH="$(pwd)/docker/pdfium:$LD_LIBRARY_PATH"
-export DATABASE_URL="sqlite:///tmp/attune-docs-dev.db"
+export DATABASE_URL="sqlite:///tmp/docpipe-dev.db"
 export OLLAMA_URL="http://localhost:11434"
 export EMBED_MODEL="bge-m3"
 
-cargo run -p attune-docs-server
+cargo run -p docpipe-server
 # 默认监听 0.0.0.0:8200
 ```
 
@@ -152,9 +152,9 @@ cargo run -p attune-docs-server
 
 | 环境变量 | 默认值 | 说明 |
 |---------|--------|------|
-| `BIND_ADDR` | `0.0.0.0:8200` | HTTP 监听地址（等同 `ATTUNE_DOCS_LISTEN`） |
-| `ATTUNE_DOCS_LISTEN` | `0.0.0.0:8200` | 同 `BIND_ADDR`，两者均可使用 |
-| `DATABASE_URL` | `sqlite:///data/attune-docs.db` | SQLite 数据库路径（使用 `file:///绝对路径` 或相对路径） |
+| `BIND_ADDR` | `0.0.0.0:8200` | HTTP 监听地址（等同 `DOCPIPE_LISTEN`） |
+| `DOCPIPE_LISTEN` | `0.0.0.0:8200` | 同 `BIND_ADDR`，两者均可使用 |
+| `DATABASE_URL` | `sqlite:///data/docpipe.db` | SQLite 数据库路径（使用 `file:///绝对路径` 或相对路径） |
 | `SQLITE_PATH` | 由 `DATABASE_URL` 推导 | 兼容旧配置的 SQLite 文件路径 |
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama API 地址（embedding 模型） |
 | `EMBED_MODEL` | `bge-m3` | Ollama embedding 模型名 |
@@ -177,7 +177,7 @@ cargo test --workspace
 cargo test --workspace -- --include-ignored
 ```
 
-> **PII fixture 注意**：`crates/attune-docs-core/tests/fixtures/` 中的 `.pdf` 和 `.docx`
+> **PII fixture 注意**：`crates/docpipe-core/tests/fixtures/` 中的 `.pdf` 和 `.docx`
 > 文件包含测试用真实文档，已加入 `.gitignore`。CI 中通过独立 secret 管理的测试 fixture
 > 提供；本地开发可联系项目管理员获取脱敏版。
 
@@ -185,7 +185,7 @@ cargo test --workspace -- --include-ignored
 
 当前 chunker 使用 `chars().count() / 4` 估算 token 数（适用中英文混合场景）。这是
 有意的设计简化，精确 tokenizer 会引入 sentencepiece 依赖，超出 v1.0 成本预算。
-如需精确 token 计数，可替换 `crates/attune-docs-core/src/chunker/` 中的估算函数。
+如需精确 token 计数，可替换 `crates/docpipe-core/src/chunker/` 中的估算函数。
 
 ### Python 客户端测试
 
@@ -232,9 +232,9 @@ Full compose 中 MinerU 版本已 pin（当前 `0.10.1`）。升级步骤：
 
 Python 和 TypeScript 客户端基于 `openapi.yaml` 手工维护（非自动生成）。
 
-若修改了服务端 API（`crates/attune-docs-server/src/routes/`），需同步更新：
+若修改了服务端 API（`crates/docpipe-server/src/routes/`），需同步更新：
 1. `openapi.yaml` — OpenAPI 规范
-2. `clients/python/attune_docs/` — Python 客户端
+2. `clients/python/docpipe/` — Python 客户端
 3. `clients/typescript/src/` — TypeScript 客户端
 4. 对应测试文件
 
@@ -250,20 +250,20 @@ Python 和 TypeScript 客户端基于 `openapi.yaml` 手工维护（非自动生
 
 ```yaml
 environment:
-  ATTUNE_DOCS_URL: "http://attune-docs-server:8200"
+  DOCPIPE_URL: "http://docpipe-server:8200"
 ```
 
-设置后，`docling_client.py` 会将文档解析请求路由到 attune-docs-server，而非原 Docling-Serve。
+设置后，`docling_client.py` 会将文档解析请求路由到 docpipe-server，而非原 Docling-Serve。
 
 ### 未设置时的行为
 
-`ATTUNE_DOCS_URL` 未设置时，所有原有行为完全不变（`DoclingClient`、`parse_pdf_async`、
-`parse_pdf_file_async`、`get_docling` 函数均正常运行，不依赖 `attune_docs` 包）。
+`DOCPIPE_URL` 未设置时，所有原有行为完全不变（`DoclingClient`、`parse_pdf_async`、
+`parse_pdf_file_async`、`get_docling` 函数均正常运行，不依赖 `docpipe` 包）。
 
 ### 安装 Python SDK
 
 ```bash
-cd /data/company/project/attune-docs/clients/python
+cd /data/company/project/docpipe/clients/python
 pip install -e .
 ```
 

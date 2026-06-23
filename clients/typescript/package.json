@@ -1,5 +1,5 @@
 {
-  "name": "@attune/docs-client",
+  "name": "@qiurui144/docpipe",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/client.js",

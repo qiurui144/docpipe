@@ -1,4 +1,4 @@
-//! AttuneDocs 门面 + Builder — 装配 parser/ocr/chunker/embedder/store/annotator（spec §5 Rust API）。
+//! Docpipe 门面 + Builder — 装配 parser/ocr/chunker/embedder/store/annotator（spec §5 Rust API）。
 
 use std::sync::Arc;
 
@@ -18,14 +18,14 @@ use crate::types::{
     AnnotatableItem, DocFormat, EmbeddedChunk, ParseConfig, ParsedDocument, SearchResult,
 };
 
-pub struct AttuneDocsBuilder {
+pub struct DocpipeBuilder {
     ocr: Option<Arc<dyn OcrBackend>>,
     store: Option<Arc<dyn VectorStore>>,
     embedder: Option<Arc<dyn Embedder>>,
     mineru: Option<Arc<MinerUBackend>>,
 }
 
-impl AttuneDocsBuilder {
+impl DocpipeBuilder {
     pub fn new() -> Self {
         Self { ocr: None, store: None, embedder: None, mineru: None }
     }
@@ -50,8 +50,8 @@ impl AttuneDocsBuilder {
         self
     }
 
-    pub fn build(self) -> Result<AttuneDocs> {
-        Ok(AttuneDocs {
+    pub fn build(self) -> Result<Docpipe> {
+        Ok(Docpipe {
             ocr: self.ocr.ok_or_else(|| DocError::Other("ocr_backend required".into()))?,
             store: self.store.ok_or_else(|| DocError::Other("vector_store required".into()))?,
             embedder: self.embedder.ok_or_else(|| DocError::Other("embedder required".into()))?,
@@ -60,20 +60,20 @@ impl AttuneDocsBuilder {
     }
 }
 
-impl Default for AttuneDocsBuilder {
+impl Default for DocpipeBuilder {
     fn default() -> Self {
         Self::new()
     }
 }
 
-pub struct AttuneDocs {
+pub struct Docpipe {
     ocr: Arc<dyn OcrBackend>,
     store: Arc<dyn VectorStore>,
     embedder: Arc<dyn Embedder>,
     mineru: Option<Arc<MinerUBackend>>,
 }
 
-impl AttuneDocs {
+impl Docpipe {
     /// 解析文档字节：自动检测格式，路由到对应解析器。
     /// PDF + table_structure：若 MinerU 健康则用 MinerU，否则回退 kreuzberg 并附 warning。
     pub async fn parse(&self, bytes: &[u8], config: ParseConfig) -> Result<ParsedDocument> {
@@ -219,8 +219,8 @@ mod tests {
         }
     }
 
-    fn build_sdk() -> AttuneDocs {
-        AttuneDocsBuilder::new()
+    fn build_sdk() -> Docpipe {
+        DocpipeBuilder::new()
             .ocr_backend(Arc::new(DummyOcr))
             .vector_store(Arc::new(SqliteVecStore::in_memory().unwrap()))
             .embedder(Arc::new(DummyEmbedder))
@@ -230,7 +230,7 @@ mod tests {
 
     #[test]
     fn build_fails_without_required_backends() {
-        let r = AttuneDocsBuilder::new().build();
+        let r = DocpipeBuilder::new().build();
         assert!(r.is_err());
     }
 

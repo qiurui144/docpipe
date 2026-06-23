@@ -1,4 +1,4 @@
-"""attune-docs SDK Python client（attune-enterprise Django 用）。"""
+"""docpipe SDK Python client — HTTP wrapper for the /v1/* document pipeline API."""
 from __future__ import annotations
 
 import json
@@ -9,7 +9,7 @@ import httpx
 from .models import ParsedDocument
 
 
-class AttuneDocsClient:
+class DocpipeClient:
     def __init__(self, base_url: str, timeout: float = 300.0):
         self.base_url = base_url.rstrip("/")
         self._client = httpx.Client(timeout=timeout)

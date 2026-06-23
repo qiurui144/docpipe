@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use attune_docs_core::annotator::AnnotateRequest;
-use attune_docs_core::types::{AnnotationSource, BBox};
+use docpipe_core::annotator::AnnotateRequest;
+use docpipe_core::types::{AnnotationSource, BBox};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;

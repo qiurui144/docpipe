@@ -3,8 +3,8 @@
 *.db
 .DS_Store
 /tmp
-crates/attune-docs-core/tests/fixtures/*.pdf
-crates/attune-docs-core/tests/fixtures/*.docx
+crates/docpipe-core/tests/fixtures/*.pdf
+crates/docpipe-core/tests/fixtures/*.docx
 clients/python/.venv/
 clients/typescript/node_modules/
 clients/typescript/dist/

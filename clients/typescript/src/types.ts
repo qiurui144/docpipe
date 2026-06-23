@@ -1,4 +1,4 @@
-// attune-docs HTTP 契约类型（与 openapi.yaml 对应，spec §5）。
+// docpipe HTTP 契约类型（与 openapi.yaml 对应，spec §5）。
 
 export interface BBox { x: number; y: number; w: number; h: number; }
 export interface TextBlock { text: string; bbox: BBox; confidence: number; }

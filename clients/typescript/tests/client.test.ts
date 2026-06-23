@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { AttuneDocsClient } from "../src/client.js";
+import { DocpipeClient } from "../src/client.js";
 
-describe("AttuneDocsClient", () => {
+describe("DocpipeClient", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
@@ -10,7 +10,7 @@ describe("AttuneDocsClient", () => {
     vi.stubGlobal("fetch", vi.fn(async () =>
       new Response(JSON.stringify({ status: "ok", backends: {}, ram_tier: "lite" }), { status: 200 })
     ));
-    const c = new AttuneDocsClient("http://docs");
+    const c = new DocpipeClient("http://docs");
     const h = await c.health();
     expect(h.status).toBe("ok");
     expect(h.ram_tier).toBe("lite");
@@ -20,7 +20,7 @@ describe("AttuneDocsClient", () => {
     vi.stubGlobal("fetch", vi.fn(async () =>
       new Response(JSON.stringify({ results: [{ chunk_id: "d:1", text: "hit", score: 0.9, metadata: {} }] }), { status: 200 })
     ));
-    const c = new AttuneDocsClient("http://docs");
+    const c = new DocpipeClient("http://docs");
     const res = await c.search("q", { topK: 1 });
     expect(res.length).toBe(1);
     expect(res[0].chunk_id).toBe("d:1");
@@ -30,7 +30,7 @@ describe("AttuneDocsClient", () => {
     vi.stubGlobal("fetch", vi.fn(async () =>
       new Response(JSON.stringify({ error: "format-unsupported", detail: "x" }), { status: 400 })
     ));
-    const c = new AttuneDocsClient("http://docs");
+    const c = new DocpipeClient("http://docs");
     await expect(c.search("q")).rejects.toThrow("format-unsupported");
   });
 
@@ -39,7 +39,7 @@ describe("AttuneDocsClient", () => {
       new Response(JSON.stringify({ results: [{ chunk_id: "d:1", text: "hit", score: 0.9, metadata: {} }] }), { status: 200 })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const c = new AttuneDocsClient("http://docs");
+    const c = new DocpipeClient("http://docs");
     await c.search("q", { topK: 1 });
     const [, init] = fetchMock.mock.calls[0];
     const body = JSON.parse((init as RequestInit).body as string);
@@ -51,7 +51,7 @@ describe("AttuneDocsClient", () => {
     vi.stubGlobal("fetch", vi.fn(async () =>
       new Response("<html>502</html>", { status: 502 })
     ));
-    const c = new AttuneDocsClient("http://docs");
+    const c = new DocpipeClient("http://docs");
     await expect(c.search("q")).rejects.toThrow("http-502");
   });
 });

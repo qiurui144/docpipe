@@ -141,47 +141,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
-name = "attune-docs-core"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "docx-rs",
- "image",
- "kreuzberg-paddle-ocr",
- "mockito",
- "ort",
- "pdf-extract",
- "pdfium-render",
- "reqwest",
- "rusqlite",
- "scraper",
- "serde",
- "serde_json",
- "sha2",
- "sqlite-vec",
- "tempfile",
- "thiserror",
- "tokio",
- "uuid",
-]
-
-[[package]]
-name = "attune-docs-server"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "attune-docs-core",
- "axum",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -586,6 +545,47 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "docpipe-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "docx-rs",
+ "image",
+ "kreuzberg-paddle-ocr",
+ "mockito",
+ "ort",
+ "pdf-extract",
+ "pdfium-render",
+ "reqwest",
+ "rusqlite",
+ "scraper",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlite-vec",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "docpipe-server"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "docpipe-core",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

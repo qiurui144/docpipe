@@ -1,8 +1,8 @@
 import json as _json
 import respx
 import httpx
-from attune_docs.client import AttuneDocsClient
-from attune_docs.models import ParsedDocument
+from docpipe.client import DocpipeClient
+from docpipe.models import ParsedDocument
 
 
 @respx.mock
@@ -14,7 +14,7 @@ def test_health_parses():
             "ram_tier": "lite",
         })
     )
-    c = AttuneDocsClient("http://docs")
+    c = DocpipeClient("http://docs")
     h = c.health()
     assert h["status"] == "ok"
     assert h["ram_tier"] == "lite"
@@ -27,7 +27,7 @@ def test_search_returns_results():
             "results": [{"chunk_id": "d:1", "text": "hit", "score": 0.92, "metadata": {}}]
         })
     )
-    c = AttuneDocsClient("http://docs")
+    c = DocpipeClient("http://docs")
     res = c.search("query", top_k=1)
     assert len(res) == 1
     assert res[0]["chunk_id"] == "d:1"
@@ -44,7 +44,7 @@ def test_parse_roundtrips_model():
         "warnings": [],
     }
     respx.post("http://docs/v1/parse").mock(return_value=httpx.Response(200, json=payload))
-    c = AttuneDocsClient("http://docs")
+    c = DocpipeClient("http://docs")
     doc = c.parse_bytes(b"%PDF-1.7 fake", filename="x.pdf")
     assert isinstance(doc, ParsedDocument)
     assert doc.doc_id == "u1"

@@ -1,14 +1,14 @@
-//! PP-OCR 模型路径解析 + 存在性检查（~/.local/share/attune-docs/models/ppocr/）。
+//! PP-OCR 模型路径解析 + 存在性检查（~/.local/share/docpipe/models/ppocr/）。
 
 use std::path::PathBuf;
 
-/// 模型目录：$XDG_DATA_HOME 或 ~/.local/share 下的 attune-docs/models/ppocr。
+/// 模型目录：$XDG_DATA_HOME 或 ~/.local/share 下的 docpipe/models/ppocr。
 pub fn models_dir() -> PathBuf {
     let base = std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
         .unwrap_or_else(|| PathBuf::from("."));
-    base.join("attune-docs/models/ppocr")
+    base.join("docpipe/models/ppocr")
 }
 
 /// 4 个必需文件齐全才算就绪。
@@ -32,15 +32,15 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         // 保存原值，测试后恢复，避免污染其他测试。
         let prev = std::env::var_os("XDG_DATA_HOME");
-        std::env::set_var("XDG_DATA_HOME", "/tmp/attune-docs-test-xdg");
+        std::env::set_var("XDG_DATA_HOME", "/tmp/docpipe-test-xdg");
         let d = models_dir();
         // 先恢复再断言，确保 panic 不会跳过恢复逻辑。
         match prev {
             Some(v) => std::env::set_var("XDG_DATA_HOME", v),
             None => std::env::remove_var("XDG_DATA_HOME"),
         }
-        assert!(d.ends_with("attune-docs/models/ppocr"));
-        assert!(d.starts_with("/tmp/attune-docs-test-xdg"));
+        assert!(d.ends_with("docpipe/models/ppocr"));
+        assert!(d.starts_with("/tmp/docpipe-test-xdg"));
     }
 
     #[test]
@@ -48,7 +48,7 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         // 保存原值，测试后恢复。
         let prev = std::env::var_os("XDG_DATA_HOME");
-        std::env::set_var("XDG_DATA_HOME", "/tmp/attune-docs-test-absent-xyz");
+        std::env::set_var("XDG_DATA_HOME", "/tmp/docpipe-test-absent-xyz");
         let result = models_present();
         match prev {
             Some(v) => std::env::set_var("XDG_DATA_HOME", v),

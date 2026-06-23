@@ -4,11 +4,11 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use attune_docs_core::ocr::{OcrBackend, OcrResult};
-use attune_docs_core::ocr::kreuzberg::KreuzbergBackend;
-use attune_docs_core::parser::pdf::PdfParser;
-use attune_docs_core::parser::DocParser;
-use attune_docs_core::types::ParseConfig;
+use docpipe_core::ocr::{OcrBackend, OcrResult};
+use docpipe_core::ocr::kreuzberg::KreuzbergBackend;
+use docpipe_core::parser::pdf::PdfParser;
+use docpipe_core::parser::DocParser;
+use docpipe_core::types::ParseConfig;
 
 fn fixture(name: &str) -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -25,7 +25,7 @@ impl OcrBackend for NoOcr {
         &self,
         _page_image: &[u8],
         _dpi: u32,
-    ) -> attune_docs_core::error::Result<OcrResult> {
+    ) -> docpipe_core::error::Result<OcrResult> {
         panic!("text-layer 路径不应调用 OCR");
     }
 

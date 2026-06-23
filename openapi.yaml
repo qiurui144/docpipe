@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: attune-docs SDK API
+  title: docpipe SDK API
   version: "1.0.0"
   description: 文档处理 SDK — 解析 / OCR / 分块 / 向量化 / 检索 / 标注
 servers:

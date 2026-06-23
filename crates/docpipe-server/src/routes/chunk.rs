@@ -1,6 +1,6 @@
 //! POST /v1/chunk — text → chunks（spec §5）。
 
-use attune_docs_core::chunker::{chunk_text, ChunkConfig};
+use docpipe_core::chunker::{chunk_text, ChunkConfig};
 use axum::Json;
 use serde::Deserialize;
 

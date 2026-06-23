@@ -1,12 +1,12 @@
 [package]
-name = "attune-docs-server"
+name = "docpipe-server"
 edition.workspace = true
 rust-version.workspace = true
 version.workspace = true
 license.workspace = true
 
 [dependencies]
-attune-docs-core = { path = "../attune-docs-core" }
+docpipe-core = { path = "../docpipe-core" }
 axum = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }

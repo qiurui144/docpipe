@@ -1,6 +1,6 @@
 //! DocError → axum 响应（kebab-code + spec §7 HTTP 状态）。
 
-use attune_docs_core::error::DocError;
+use docpipe_core::error::DocError;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;

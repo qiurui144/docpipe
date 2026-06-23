@@ -1,6 +1,6 @@
 import type { ParsedDocument, SearchResult, HealthResponse } from "./types.js";
 
-export class AttuneDocsClient {
+export class DocpipeClient {
   private baseUrl: string;
 
   constructor(baseUrl: string) {

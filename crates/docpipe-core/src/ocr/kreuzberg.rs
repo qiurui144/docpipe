@@ -1,7 +1,7 @@
 //! KreuzbergBackend — PP-OCRv4 ONNX 原生推理（kreuzberg-paddle-ocr OcrLite）。
 //!
 //! OcrLite 内部不是 Sync，必须 Mutex 包裹。detect_from_path 吃文件路径，故 page_image bytes
-//! 先落 tempfile 再喂入。参数遵循 RapidOCR 官方默认值（见 attune-core/src/ocr/ppocr.rs）。
+//! 先落 tempfile 再喂入。参数遵循 RapidOCR 官方默认值（RapidOCR 官方默认值）。
 
 use std::io::Write;
 use std::path::Path;
@@ -125,10 +125,10 @@ impl OcrBackend for KreuzbergBackend {
                 DocError::OcrBackendUnavailable(format!("detect_from_path: {e}"))
             })?;
 
-        // lock 先 drop，再 drop tmp（顺序与 attune-core/ppocr.rs 一致）
+        // lock 先 drop，再 drop tmp（lock 与 tmp 释放顺序）
         drop(lock);
 
-        // 转换 kreuzberg TextBlock → attune-docs TextBlock
+        // 转换 kreuzberg TextBlock → docpipe TextBlock
         let mut blocks = Vec::with_capacity(result.text_blocks.len());
         let mut conf_sum = 0.0f32;
         let mut conf_n = 0u32;
@@ -178,7 +178,7 @@ mod tests {
     #[test]
     fn new_errs_when_models_missing() {
         // 指向必然不存在的临时目录 → 应返回 Err(OcrBackendUnavailable)
-        let absent = std::path::Path::new("/tmp/attune-docs-kreuzberg-absent-xyz");
+        let absent = std::path::Path::new("/tmp/docpipe-kreuzberg-absent-xyz");
         let result = KreuzbergBackend::from_models_dir(absent);
         assert!(
             result.is_err(),

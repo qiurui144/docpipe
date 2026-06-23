@@ -1,4 +1,4 @@
-//! attune-docs-server 入口 — axum /v1/* REST 服务。
+//! docpipe-server 入口 — axum /v1/* REST 服务。
 
 mod config;
 mod error;
@@ -20,6 +20,6 @@ async fn main() {
     });
     let app = routes::router(Arc::new(state));
     let listener = tokio::net::TcpListener::bind(&cfg.bind_addr).await.expect("bind");
-    tracing::info!("attune-docs-server listening on {}", cfg.bind_addr);
+    tracing::info!("docpipe-server listening on {}", cfg.bind_addr);
     axum::serve(listener, app).await.expect("serve");
 }

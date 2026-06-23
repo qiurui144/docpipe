@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use attune_docs_core::error::DocError;
-use attune_docs_core::types::{ParseConfig, ParsedDocument};
+use docpipe_core::error::DocError;
+use docpipe_core::types::{ParseConfig, ParsedDocument};
 use axum::extract::{Multipart, State};
 use axum::Json;
 
