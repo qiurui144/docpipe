@@ -6,6 +6,8 @@
 crates/attune-docs-core/tests/fixtures/*.pdf
 crates/attune-docs-core/tests/fixtures/*.docx
 clients/python/.venv/
+clients/typescript/node_modules/
+clients/typescript/dist/
 __pycache__/
 *.egg-info/
 .pytest_cache/

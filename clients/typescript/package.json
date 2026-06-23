@@ -1,0 +1,15 @@
+{
+  "name": "@attune/docs-client",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/client.js",
+  "types": "dist/client.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.5",
+    "vitest": "^2"
+  }
+}

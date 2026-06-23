@@ -1,0 +1,429 @@
+openapi: 3.0.3
+info:
+  title: attune-docs SDK API
+  version: "1.0.0"
+  description: 文档处理 SDK — 解析 / OCR / 分块 / 向量化 / 检索 / 标注
+servers:
+  - url: /v1
+paths:
+  /parse:
+    post:
+      summary: 解析文档
+      operationId: parseDocument
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: 上传的文档文件（PDF / DOCX / EPUB / HTML）
+                config:
+                  type: string
+                  description: ParseConfig JSON 字符串（可选）
+      responses:
+        "200":
+          description: 解析成功，返回 ParsedDocument
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParsedDocument"
+        "400":
+          description: 格式不支持
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: format-unsupported
+        "413":
+          description: 文件过大
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: file-too-large
+        "422":
+          description: 解析结果为空
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: parse-empty-result
+
+  /chunk:
+    post:
+      summary: 文本分块
+      operationId: chunkText
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  description: 待分块的原始文本
+                chunk_size:
+                  type: integer
+                  default: 512
+                  description: 每块最大字符数
+                overlap:
+                  type: number
+                  format: float
+                  default: 0.2
+                  description: 相邻块重叠比例（0–1）
+                respect_headings:
+                  type: boolean
+                  default: true
+                  description: 是否按标题边界分割
+      responses:
+        "200":
+          description: 分块结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chunks:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        text:
+                          type: string
+                        start:
+                          type: integer
+                        end:
+                          type: integer
+
+  /embed:
+    post:
+      summary: 文本向量化
+      operationId: embedTexts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - texts
+              properties:
+                texts:
+                  type: array
+                  items:
+                    type: string
+                  description: 待向量化的文本列表
+                model:
+                  type: string
+                  description: 指定 embedding 模型（可选，默认使用服务器配置）
+      responses:
+        "200":
+          description: 向量化结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  embeddings:
+                    type: array
+                    items:
+                      type: array
+                      items:
+                        type: number
+                        format: float
+                  model:
+                    type: string
+        "502":
+          description: Embedding 服务不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: embedding-failed
+
+  /search:
+    post:
+      summary: 向量检索
+      operationId: searchDocuments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - query
+              properties:
+                query:
+                  type: string
+                  description: 检索查询文本
+                collection:
+                  type: string
+                  default: default
+                  description: 向量集合名称
+                top_k:
+                  type: integer
+                  default: 5
+                  description: 返回最多 K 条结果
+                threshold:
+                  type: number
+                  format: float
+                  description: 最小相似度阈值（可选）
+      responses:
+        "200":
+          description: 检索结果列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SearchResult"
+
+  /annotate:
+    post:
+      summary: 创建文档标注
+      operationId: createAnnotation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnnotateRequest"
+      responses:
+        "201":
+          description: 标注创建成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  item_id:
+                    type: string
+                  text_hash:
+                    type: string
+        "400":
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /health:
+    get:
+      summary: 健康检查
+      operationId: healthCheck
+      responses:
+        "200":
+          description: 服务健康状态
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: 机器可读错误码（kebab-case）
+        detail:
+          type: string
+          description: 人类可读错误描述（可选）
+
+    BBox:
+      type: object
+      properties:
+        x:
+          type: integer
+          description: 左上角 X 坐标（像素）
+        y:
+          type: integer
+          description: 左上角 Y 坐标（像素）
+        w:
+          type: integer
+          description: 宽度（像素）
+        h:
+          type: integer
+          description: 高度（像素）
+
+    TextBlock:
+      type: object
+      properties:
+        text:
+          type: string
+        bbox:
+          $ref: "#/components/schemas/BBox"
+        confidence:
+          type: number
+          format: float
+          description: OCR 置信度（0–1），非 OCR 场景为 1.0
+
+    Table:
+      type: object
+      properties:
+        rows:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+
+    PageContent:
+      type: object
+      properties:
+        page_num:
+          type: integer
+          description: 页码（从 1 开始）
+        text:
+          type: string
+          description: 整页纯文本
+        blocks:
+          type: array
+          items:
+            $ref: "#/components/schemas/TextBlock"
+        tables:
+          type: array
+          items:
+            $ref: "#/components/schemas/Table"
+
+    ParsedDocument:
+      type: object
+      required:
+        - doc_id
+        - format
+        - page_count
+        - ocr_used
+        - backend
+        - pages
+      properties:
+        doc_id:
+          type: string
+          description: 文档唯一标识符（UUID）
+        format:
+          type: string
+          enum: [pdf, docx, epub, html]
+        page_count:
+          type: integer
+        ocr_used:
+          type: boolean
+          description: 是否使用了 OCR 引擎
+        backend:
+          type: string
+          enum: [kreuzberg, mineru, text-layer]
+          description: 实际使用的解析后端
+        pages:
+          type: array
+          items:
+            $ref: "#/components/schemas/PageContent"
+        warnings:
+          type: array
+          items:
+            type: string
+          description: 解析过程中的警告信息
+
+    SearchResult:
+      type: object
+      properties:
+        chunk_id:
+          type: string
+          description: 块标识符（格式：doc_id:chunk_index）
+        text:
+          type: string
+          description: 匹配的文本片段
+        score:
+          type: number
+          format: float
+          description: 相似度分数（0–1）
+        metadata:
+          type: object
+          additionalProperties: true
+          description: 关联元数据（页码、标题等）
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - ram_tier
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, error]
+        backends:
+          type: object
+          additionalProperties:
+            type: string
+          description: 各后端服务状态
+        ram_tier:
+          type: string
+          enum: [lite, standard, high]
+          description: 服务器内存档位
+
+    AnnotateRequest:
+      type: object
+      required:
+        - doc_id
+        - original_text
+        - content
+        - label
+        - color
+        - locator
+      properties:
+        doc_id:
+          type: string
+        original_text:
+          type: string
+          description: 被标注的原始文本片段
+        content:
+          type: string
+          description: 标注内容（AI 生成的注释）
+        label:
+          type: string
+          description: 标注类别标签
+        color:
+          type: string
+          description: 标注颜色（CSS 颜色值）
+        locator:
+          type: object
+          required:
+            - page_num
+            - char_offset
+          properties:
+            page_num:
+              type: integer
+            char_offset:
+              type: integer
+            bbox:
+              type: array
+              items:
+                type: integer
+              minItems: 4
+              maxItems: 4
+              description: "[x, y, w, h] 像素坐标（可选）"
+        source:
+          type: string
+          enum: [ai, human]
+          default: ai
+        skill_metadata:
+          type: object
+          additionalProperties: true
+          description: 生成此标注的技能元数据
