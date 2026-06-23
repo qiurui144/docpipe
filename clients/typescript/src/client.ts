@@ -17,9 +17,14 @@ export class AttuneDocsClient {
   }
 
   private async handle(r: Response): Promise<unknown> {
-    const json = await r.json();
+    let json: unknown;
+    try {
+      json = await r.json();
+    } catch {
+      // 非 JSON 错误体（如反代返回的 413/502 纯文本/HTML）
+    }
     if (!r.ok) {
-      const code = (json as { error?: string })?.error ?? `http-${r.status}`;
+      const code = (json as { error?: string } | undefined)?.error ?? `http-${r.status}`;
       throw new Error(code);
     }
     return json;

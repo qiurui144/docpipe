@@ -33,4 +33,25 @@ describe("AttuneDocsClient", () => {
     const c = new AttuneDocsClient("http://docs");
     await expect(c.search("q")).rejects.toThrow("format-unsupported");
   });
+
+  it("search sends snake_case body and camelCase does not leak", async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ results: [{ chunk_id: "d:1", text: "hit", score: 0.9, metadata: {} }] }), { status: 200 })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const c = new AttuneDocsClient("http://docs");
+    await c.search("q", { topK: 1 });
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.top_k).toBe(1);       // snake_case on the wire
+    expect(body.topK).toBeUndefined(); // camelCase must NOT leak
+  });
+
+  it("throws http-N fallback on non-JSON error body", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      new Response("<html>502</html>", { status: 502 })
+    ));
+    const c = new AttuneDocsClient("http://docs");
+    await expect(c.search("q")).rejects.toThrow("http-502");
+  });
 });
