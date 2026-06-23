@@ -2,6 +2,7 @@
 
 pub mod error;
 pub mod types;
+pub mod parser;
 
 #[cfg(test)]
 mod scaffold_tests {
