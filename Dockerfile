@@ -27,6 +27,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # PDFium 共享库（构建期 CI 下载 prebuilt，对应 pdfium-render 0.9 ABI，见 DEVELOP.md）。
 # 若构建时 docker/pdfium/libpdfium.so 不存在，构建将失败并提示需先下载。
 COPY docker/pdfium/libpdfium.so /usr/local/lib/libpdfium.so
+RUN test -f /usr/local/lib/libpdfium.so || \
+    (echo "ERROR: docker/pdfium/libpdfium.so missing — see DEVELOP.md PDFium section" && exit 1)
 ENV PDFIUM_DYNAMIC_LIB_PATH=/usr/local/lib/libpdfium.so
 ENV LD_LIBRARY_PATH=/usr/local/lib
 
