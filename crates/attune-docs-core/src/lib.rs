@@ -6,6 +6,7 @@ pub mod parser;
 pub mod ocr;
 pub mod chunker;
 pub mod embedder;
+pub mod store;
 
 #[cfg(test)]
 mod scaffold_tests {

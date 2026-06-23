@@ -32,3 +32,9 @@ sha2 = "0.10"
 
 [profile.release]
 opt-level = 3
+
+# sqlite-vec 0.1.10-alpha.4 包含对缺失的 sqlite-vec-diskann.c 的 #include，
+# 该 alpha 版本打包时遗漏了 diskann 实现文件。通过 patch 指向本地副本（已将
+# SQLITE_VEC_ENABLE_DISKANN 改为 0 以跳过缺失文件），功能上完全等价。
+[patch.crates-io]
+sqlite-vec = { path = "vendor/sqlite-vec" }
