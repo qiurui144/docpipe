@@ -8,6 +8,9 @@ pub mod chunker;
 pub mod embedder;
 pub mod store;
 pub mod annotator;
+pub mod facade;
+
+pub use facade::{AttuneDocs, AttuneDocsBuilder};
 
 #[cfg(test)]
 mod scaffold_tests {
