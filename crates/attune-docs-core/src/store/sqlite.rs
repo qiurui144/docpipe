@@ -23,13 +23,23 @@ static REGISTER_ONCE: Once = Once::new();
 
 fn register_extension() {
     REGISTER_ONCE.call_once(|| {
-        // 安全：sqlite3_vec_init 是符合 SQLite auto_extension 协议的 C 函数，
-        // 注册为 auto-extension 后每个新建 Connection 都会自动加载 vec0 虚拟表。
-        // 本函数通过 Once 保证只注册一次，避免重复注册。
+        // AutoExtFn 是 SQLite auto_extension 协议要求的精确 C 函数类型，与 rusqlite bindgen
+        // 生成的 sqlite3_auto_extension 参数类型完全一致。显式命名目标类型后，transmute 的
+        // 目标类型在调用点可见；若 ABI 改变编译器会在此处报类型尺寸不匹配，避免通过
+        // *const () 彻底擦除类型信息（原实现的问题所在）。
+        // 安全：sqlite3_vec_init 在 C 侧声明为 int(*)(sqlite3*,char**,sqlite3_api_routines*)，
+        // 即 AutoExtFn 的精确签名；Rust 的 extern 绑定将其简化为 fn()，需 transmute 还原。
+        // Once 保证全进程只注册一次。
+        type AutoExtFn = unsafe extern "C" fn(
+            *mut rusqlite::ffi::sqlite3,
+            *mut *mut std::ffi::c_char,
+            *const rusqlite::ffi::sqlite3_api_routines,
+        ) -> std::ffi::c_int;
         unsafe {
-            rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
-                sqlite3_vec_init as *const (),
-            )));
+            rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute::<
+                unsafe extern "C" fn(),
+                AutoExtFn,
+            >(sqlite3_vec_init)));
         }
     });
 }
@@ -178,7 +188,8 @@ impl VectorStore for SqliteVecStore {
                 row.map_err(|e| DocError::VectorStoreError(format!("row: {e}")))?;
             let page_refs: serde_json::Value =
                 serde_json::from_str(&page_refs_json).unwrap_or(serde_json::Value::Null);
-            // cosine distance ∈ [0, 2]；score = 1 - distance（0 = 完全相同）
+            // sqlite-vec vec0 默认距离度量为 L2（欧氏距离）；score = 1 - distance
+            // 是单调保序变换（距离越小 score 越高），仅用于最近邻排序，并非归一化余弦相似度。
             let score = (1.0 - distance) as f32;
             out.push(SearchResult {
                 chunk_id,
@@ -205,8 +216,8 @@ impl VectorStore for SqliteVecStore {
         let rowids: Vec<i64> = stmt
             .query_map(rusqlite::params![prefix, collection], |r| r.get(0))
             .map_err(|e| DocError::VectorStoreError(format!("delete query: {e}")))?
-            .filter_map(|x| x.ok())
-            .collect();
+            .collect::<rusqlite::Result<Vec<i64>>>()
+            .map_err(|e| DocError::VectorStoreError(format!("delete row: {e}")))?;
 
         for rid in rowids {
             conn.execute("DELETE FROM vec_chunks WHERE rowid = ?1", rusqlite::params![rid])
