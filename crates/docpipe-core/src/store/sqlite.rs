@@ -52,8 +52,8 @@ impl SqliteVecStore {
     /// 打开文件数据库，并注册 sqlite-vec 扩展。
     pub fn new(path: &str) -> Result<Self> {
         register_extension();
-        let conn = Connection::open(path)
-            .map_err(|e| DocError::VectorStoreError(format!("open: {e}")))?;
+        let conn =
+            Connection::open(path).map_err(|e| DocError::VectorStoreError(format!("open: {e}")))?;
         Self::init(conn)
     }
 
@@ -78,7 +78,9 @@ impl SqliteVecStore {
             );",
         )
         .map_err(|e| DocError::VectorStoreError(format!("create chunk_meta: {e}")))?;
-        Ok(Self { conn: Mutex::new(conn) })
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
     /// 确保 vec0 虚拟表存在（dim 维）。幂等：CREATE VIRTUAL TABLE IF NOT EXISTS。
@@ -99,7 +101,9 @@ impl VectorStore for SqliteVecStore {
         if chunks.is_empty() {
             return Ok(());
         }
-        let conn = self.conn.lock()
+        let conn = self
+            .conn
+            .lock()
             .map_err(|_| DocError::VectorStoreError("mutex poisoned".into()))?;
         let dim = chunks[0].embedding.len();
         Self::ensure_vec_table(&conn, dim)?;
@@ -129,8 +133,8 @@ impl VectorStore for SqliteVecStore {
             }
 
             // 插入新元数据，获取 rowid
-            let page_refs = serde_json::to_string(&ec.chunk.page_refs)
-                .unwrap_or_else(|_| "[]".into());
+            let page_refs =
+                serde_json::to_string(&ec.chunk.page_refs).unwrap_or_else(|_| "[]".into());
             conn.execute(
                 "INSERT INTO chunk_meta (chunk_id, coll, text, page_refs) VALUES (?1, ?2, ?3, ?4)",
                 rusqlite::params![ec.chunk.chunk_id, collection, ec.chunk.text, page_refs],
@@ -151,8 +155,15 @@ impl VectorStore for SqliteVecStore {
     }
 
     /// KNN 搜索：使用 vec0 MATCH 语法，返回 top_k 最近邻（按余弦距离）。
-    async fn search(&self, query_vec: &[f32], collection: &str, top_k: usize) -> Result<Vec<SearchResult>> {
-        let conn = self.conn.lock()
+    async fn search(
+        &self,
+        query_vec: &[f32],
+        collection: &str,
+        top_k: usize,
+    ) -> Result<Vec<SearchResult>> {
+        let conn = self
+            .conn
+            .lock()
             .map_err(|_| DocError::VectorStoreError("mutex poisoned".into()))?;
 
         // vec0 KNN 查询：embedding MATCH ? 约束 + k = ?（hidden column）
@@ -203,15 +214,15 @@ impl VectorStore for SqliteVecStore {
 
     /// 按 doc_id 前缀删除所有 chunk（chunk_id LIKE "{doc_id}:%"）。
     async fn delete(&self, doc_id: &str, collection: &str) -> Result<()> {
-        let conn = self.conn.lock()
+        let conn = self
+            .conn
+            .lock()
             .map_err(|_| DocError::VectorStoreError("mutex poisoned".into()))?;
         let prefix = format!("{doc_id}:%");
 
         // 收集所有匹配的 rowid
         let mut stmt = conn
-            .prepare(
-                "SELECT rowid FROM chunk_meta WHERE chunk_id LIKE ?1 AND coll = ?2",
-            )
+            .prepare("SELECT rowid FROM chunk_meta WHERE chunk_id LIKE ?1 AND coll = ?2")
             .map_err(|e| DocError::VectorStoreError(format!("prepare delete: {e}")))?;
         let rowids: Vec<i64> = stmt
             .query_map(rusqlite::params![prefix, collection], |r| r.get(0))
@@ -220,10 +231,16 @@ impl VectorStore for SqliteVecStore {
             .map_err(|e| DocError::VectorStoreError(format!("delete row: {e}")))?;
 
         for rid in rowids {
-            conn.execute("DELETE FROM vec_chunks WHERE rowid = ?1", rusqlite::params![rid])
-                .map_err(|e| DocError::VectorStoreError(format!("delete vec row: {e}")))?;
-            conn.execute("DELETE FROM chunk_meta WHERE rowid = ?1", rusqlite::params![rid])
-                .map_err(|e| DocError::VectorStoreError(format!("delete meta row: {e}")))?;
+            conn.execute(
+                "DELETE FROM vec_chunks WHERE rowid = ?1",
+                rusqlite::params![rid],
+            )
+            .map_err(|e| DocError::VectorStoreError(format!("delete vec row: {e}")))?;
+            conn.execute(
+                "DELETE FROM chunk_meta WHERE rowid = ?1",
+                rusqlite::params![rid],
+            )
+            .map_err(|e| DocError::VectorStoreError(format!("delete meta row: {e}")))?;
         }
         Ok(())
     }

@@ -91,7 +91,12 @@ mod tests {
     async fn embed_batch_parses_embeddings() {
         let mut server = mockito::Server::new_async().await;
         let body = r#"{"embeddings":[[0.1,0.2,0.3],[0.4,0.5,0.6]]}"#;
-        let _m = server.mock("POST", "/api/embed").with_status(200).with_body(body).create_async().await;
+        let _m = server
+            .mock("POST", "/api/embed")
+            .with_status(200)
+            .with_body(body)
+            .create_async()
+            .await;
         let emb = OllamaEmbedder::new(server.url(), "bge-m3");
         let out = emb.embed_batch(&["a", "b"]).await.unwrap();
         assert_eq!(out.len(), 2);
@@ -101,7 +106,12 @@ mod tests {
     #[tokio::test]
     async fn embed_batch_fails_after_retries() {
         let mut server = mockito::Server::new_async().await;
-        let _m = server.mock("POST", "/api/embed").with_status(500).expect_at_least(3).create_async().await;
+        let _m = server
+            .mock("POST", "/api/embed")
+            .with_status(500)
+            .expect_at_least(3)
+            .create_async()
+            .await;
         let emb = OllamaEmbedder::new(server.url(), "bge-m3");
         let err = emb.embed_batch(&["a"]).await.unwrap_err();
         assert_eq!(err.code(), "embedding-failed");

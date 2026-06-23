@@ -13,6 +13,10 @@ pub struct ChunkConfig {
 
 impl Default for ChunkConfig {
     fn default() -> Self {
-        Self { chunk_size: 512, overlap: 0.2, respect_headings: true }
+        Self {
+            chunk_size: 512,
+            overlap: 0.2,
+            respect_headings: true,
+        }
     }
 }

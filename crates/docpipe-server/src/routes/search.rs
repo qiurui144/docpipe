@@ -31,7 +31,10 @@ pub async fn search(
     State(state): State<Arc<AppState>>,
     Json(req): Json<SearchReq>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let mut results = state.sdk.search(&req.query, &req.collection, req.top_k).await?;
+    let mut results = state
+        .sdk
+        .search(&req.query, &req.collection, req.top_k)
+        .await?;
     if let Some(t) = req.threshold {
         results.retain(|r| r.score >= t);
     }

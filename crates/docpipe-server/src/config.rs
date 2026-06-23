@@ -7,7 +7,7 @@ pub struct Config {
     pub embed_model: String,
     pub sqlite_path: String,
     pub mineru_url: Option<String>,
-    #[allow(dead_code)]  // 保留供将来 OCR 并发控制使用（spec §8 MAX_OCR_CONCURRENCY）
+    #[allow(dead_code)] // 保留供将来 OCR 并发控制使用（spec §8 MAX_OCR_CONCURRENCY）
     pub max_ocr_concurrency: usize,
 }
 
@@ -18,8 +18,7 @@ impl Config {
             ollama_url: std::env::var("OLLAMA_URL")
                 .unwrap_or_else(|_| "http://localhost:11434".into()),
             embed_model: std::env::var("EMBED_MODEL").unwrap_or_else(|_| "bge-m3".into()),
-            sqlite_path: std::env::var("SQLITE_PATH")
-                .unwrap_or_else(|_| "./docpipe.db".into()),
+            sqlite_path: std::env::var("SQLITE_PATH").unwrap_or_else(|_| "./docpipe.db".into()),
             mineru_url: std::env::var("MINERU_URL").ok(),
             max_ocr_concurrency: std::env::var("MAX_OCR_CONCURRENCY")
                 .ok()

@@ -104,11 +104,19 @@ mod tests {
     fn does_not_split_mid_sentence() {
         // chunk_size 小，但句子完整：每个 chunk 以句末标点结尾。
         let text = "第一句比较长内容内容内容。第二句也不短内容内容。第三句结尾内容。";
-        let cfg = ChunkConfig { chunk_size: 12, overlap: 0.0, respect_headings: false };
+        let cfg = ChunkConfig {
+            chunk_size: 12,
+            overlap: 0.0,
+            respect_headings: false,
+        };
         let chunks = chunk_text(text, &cfg);
         for c in &chunks {
             let last = c.text.trim_end().chars().last().unwrap();
-            assert!("。！？".contains(last), "chunk 未在句边界结束: {:?}", c.text);
+            assert!(
+                "。！？".contains(last),
+                "chunk 未在句边界结束: {:?}",
+                c.text
+            );
         }
     }
 
@@ -117,9 +125,17 @@ mod tests {
         // 每句 7 字符，chunk_size=14 恰好容纳 2 句；overlap=0.5 → back=1，下块回退 1 句。
         // 期望：chunk[0]={s1,s2}，chunk[1]={s2,s3}，两块共享句子 "句子二内容。"。
         let text = "句子一内容。句子二内容。句子三内容。句子四内容。";
-        let cfg_overlap = ChunkConfig { chunk_size: 14, overlap: 0.5, respect_headings: false };
+        let cfg_overlap = ChunkConfig {
+            chunk_size: 14,
+            overlap: 0.5,
+            respect_headings: false,
+        };
         let chunks = chunk_text(text, &cfg_overlap);
-        assert!(chunks.len() >= 2, "overlap 模式应产生至少 2 个 chunk，实际 {}", chunks.len());
+        assert!(
+            chunks.len() >= 2,
+            "overlap 模式应产生至少 2 个 chunk，实际 {}",
+            chunks.len()
+        );
 
         // 提取 chunk[0] 与 chunk[1] 的句子集合（以 '。' 为分隔，过滤空串）。
         let sentences_of = |s: &str| -> std::collections::HashSet<String> {
@@ -140,7 +156,11 @@ mod tests {
         );
 
         // 对照断言：overlap=0.0 时相邻 chunk 应无共享句子（证明上面的断言不是平凡的）。
-        let cfg_no_overlap = ChunkConfig { chunk_size: 14, overlap: 0.0, respect_headings: false };
+        let cfg_no_overlap = ChunkConfig {
+            chunk_size: 14,
+            overlap: 0.0,
+            respect_headings: false,
+        };
         let chunks_no = chunk_text(text, &cfg_no_overlap);
         if chunks_no.len() >= 2 {
             let s0_no: std::collections::HashSet<String> = sentences_of(&chunks_no[0].text);
@@ -157,7 +177,11 @@ mod tests {
     #[test]
     fn heading_not_shared_with_body() {
         let text = "## 标题\n正文内容很长很长很长很长很长。";
-        let cfg = ChunkConfig { chunk_size: 512, overlap: 0.0, respect_headings: true };
+        let cfg = ChunkConfig {
+            chunk_size: 512,
+            overlap: 0.0,
+            respect_headings: true,
+        };
         let chunks = chunk_text(text, &cfg);
         // 标题独立成块（或作为后续块的引导，但不与正文混在一个超大块里时标题单列）。
         assert!(chunks.iter().any(|c| c.text.contains("## 标题")));
@@ -168,7 +192,11 @@ mod tests {
         // 验证规则：当 buffer 非空时遇到标题，应先结束当前块，让标题领起新块。
         // 即：不存在任何单个 chunk 同时包含正文和该正文之后的标题。
         let text = "前面的正文内容。## 标题\n标题后的正文。";
-        let cfg = ChunkConfig { chunk_size: 512, overlap: 0.0, respect_headings: true };
+        let cfg = ChunkConfig {
+            chunk_size: 512,
+            overlap: 0.0,
+            respect_headings: true,
+        };
         let chunks = chunk_text(text, &cfg);
         // 找出含 "## 标题" 的 chunk，断言该 chunk 不含前序正文。
         for c in &chunks {

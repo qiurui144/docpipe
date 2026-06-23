@@ -54,7 +54,12 @@ impl DocParser for HtmlParser {
             page_count: 1,
             ocr_used: false,
             backend: OcrBackendKind::TextLayer,
-            pages: vec![PageContent { page_num: 1, text, blocks: vec![], tables: vec![] }],
+            pages: vec![PageContent {
+                page_num: 1,
+                text,
+                blocks: vec![],
+                tables: vec![],
+            }],
             warnings: vec![],
         })
     }
@@ -88,7 +93,10 @@ mod tests {
     async fn html_empty_body_returns_empty_error() {
         let html = b"<html><body></body></html>";
         let parser = HtmlParser;
-        let err = parser.parse(html, &ParseConfig::default()).await.unwrap_err();
+        let err = parser
+            .parse(html, &ParseConfig::default())
+            .await
+            .unwrap_err();
         assert_eq!(err.code(), "parse-empty-result");
     }
 

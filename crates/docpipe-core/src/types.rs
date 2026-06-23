@@ -68,7 +68,12 @@ pub struct ParseConfig {
 
 impl Default for ParseConfig {
     fn default() -> Self {
-        Self { ocr: true, table_structure: false, max_pages: None, dpi: 300 }
+        Self {
+            ocr: true,
+            table_structure: false,
+            max_pages: None,
+            dpi: 300,
+        }
     }
 }
 
@@ -157,7 +162,16 @@ mod tests {
             pages: vec![PageContent {
                 page_num: 1,
                 text: "hello".into(),
-                blocks: vec![TextBlock { text: "hello".into(), bbox: BBox { x: 0, y: 0, w: 10, h: 5 }, confidence: 0.99 }],
+                blocks: vec![TextBlock {
+                    text: "hello".into(),
+                    bbox: BBox {
+                        x: 0,
+                        y: 0,
+                        w: 10,
+                        h: 5,
+                    },
+                    confidence: 0.99,
+                }],
                 tables: vec![],
             }],
             warnings: vec![],

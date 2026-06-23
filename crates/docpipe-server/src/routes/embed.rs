@@ -23,5 +23,7 @@ pub async fn embed(
     let refs: Vec<&str> = req.texts.iter().map(|s| s.as_str()).collect();
     let embeddings = state.sdk.embed_texts(&refs).await?;
     let dim = embeddings.first().map(|e| e.len()).unwrap_or(0);
-    Ok(Json(serde_json::json!({ "embeddings": embeddings, "model": req.model, "dim": dim })))
+    Ok(Json(
+        serde_json::json!({ "embeddings": embeddings, "model": req.model, "dim": dim }),
+    ))
 }

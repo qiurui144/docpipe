@@ -2,10 +2,10 @@
 
 use std::sync::Arc;
 
-use docpipe_core::error::DocError;
-use docpipe_core::types::{ParseConfig, ParsedDocument};
 use axum::extract::{Multipart, State};
 use axum::Json;
+use docpipe_core::error::DocError;
+use docpipe_core::types::{ParseConfig, ParsedDocument};
 
 use crate::error::ApiError;
 use crate::state::AppState;
@@ -45,8 +45,7 @@ pub async fn parse(
         }
     }
 
-    let bytes = file_bytes
-        .ok_or_else(|| ApiError(DocError::Other("missing file field".into())))?;
+    let bytes = file_bytes.ok_or_else(|| ApiError(DocError::Other("missing file field".into())))?;
     let doc = state.sdk.parse(&bytes, config).await?;
     Ok(Json(doc))
 }

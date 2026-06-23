@@ -2,8 +2,7 @@
 
 use async_trait::async_trait;
 use docx_rs::{
-    read_docx, DocumentChild, ParagraphChild, RunChild, TableCellContent, TableChild,
-    TableRowChild,
+    read_docx, DocumentChild, ParagraphChild, RunChild, TableCellContent, TableChild, TableRowChild,
 };
 
 use super::DocParser;
@@ -25,8 +24,7 @@ pub fn join_paragraphs(paras: &[String]) -> String {
 #[async_trait]
 impl DocParser for DocxParser {
     async fn parse(&self, bytes: &[u8], _config: &ParseConfig) -> Result<ParsedDocument> {
-        let docx =
-            read_docx(bytes).map_err(|e| DocError::Other(format!("docx read: {e}")))?;
+        let docx = read_docx(bytes).map_err(|e| DocError::Other(format!("docx read: {e}")))?;
         let (paragraphs, tables) = extract_docx_content(&docx);
         let text = join_paragraphs(&paragraphs);
         if text.trim().is_empty() && tables.is_empty() {
@@ -38,7 +36,12 @@ impl DocParser for DocxParser {
             page_count: 1,
             ocr_used: false,
             backend: OcrBackendKind::TextLayer,
-            pages: vec![PageContent { page_num: 1, text, blocks: vec![], tables }],
+            pages: vec![PageContent {
+                page_num: 1,
+                text,
+                blocks: vec![],
+                tables,
+            }],
             warnings: vec![],
         })
     }
@@ -117,7 +120,10 @@ mod tests {
             "/tests/fixtures/with_table.docx"
         ))
         .unwrap();
-        let doc = DocxParser.parse(&bytes, &ParseConfig::default()).await.unwrap();
+        let doc = DocxParser
+            .parse(&bytes, &ParseConfig::default())
+            .await
+            .unwrap();
         assert!(!doc.pages[0].tables.is_empty());
     }
 }

@@ -14,9 +14,14 @@ pub fn models_dir() -> PathBuf {
 /// 4 个必需文件齐全才算就绪。
 pub fn models_present() -> bool {
     let d = models_dir();
-    ["ch_PP-OCRv5_det_mobile.onnx", "ch_ppocr_mobile_v2.0_cls.onnx", "ch_PP-OCRv5_rec_mobile.onnx", "ppocr_keys_v1.txt"]
-        .iter()
-        .all(|f| d.join(f).exists())
+    [
+        "ch_PP-OCRv5_det_mobile.onnx",
+        "ch_ppocr_mobile_v2.0_cls.onnx",
+        "ch_PP-OCRv5_rec_mobile.onnx",
+        "ppocr_keys_v1.txt",
+    ]
+    .iter()
+    .all(|f| d.join(f).exists())
 }
 
 #[cfg(test)]

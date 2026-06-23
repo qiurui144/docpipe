@@ -21,7 +21,12 @@ pub fn detect_format(bytes: &[u8]) -> Result<DocFormat> {
         return Err(DocError::FormatUnsupported);
     }
     // HTML：宽松检测开头（跳过 BOM/空白）含 <!doctype html 或 <html。
-    let head: String = bytes.iter().take(512).map(|&b| b as char).collect::<String>().to_ascii_lowercase();
+    let head: String = bytes
+        .iter()
+        .take(512)
+        .map(|&b| b as char)
+        .collect::<String>()
+        .to_ascii_lowercase();
     let trimmed = head.trim_start();
     if trimmed.starts_with("<!doctype html") || trimmed.starts_with("<html") {
         return Ok(DocFormat::Html);
@@ -38,8 +43,8 @@ fn contains_subslice(haystack: &[u8], needle: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::types::DocFormat;
     use super::detect_format;
+    use crate::types::DocFormat;
 
     #[test]
     fn detects_pdf_by_magic() {

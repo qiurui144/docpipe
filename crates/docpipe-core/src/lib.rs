@@ -1,14 +1,14 @@
 //! docpipe-core — 文档处理 SDK 核心库（解析 / OCR / 分块 / 向量化 / 存储 / 标注）。
 
-pub mod error;
-pub mod types;
-pub mod parser;
-pub mod ocr;
+pub mod annotator;
 pub mod chunker;
 pub mod embedder;
-pub mod store;
-pub mod annotator;
+pub mod error;
 pub mod facade;
+pub mod ocr;
+pub mod parser;
+pub mod store;
+pub mod types;
 
 pub use facade::{Docpipe, DocpipeBuilder};
 

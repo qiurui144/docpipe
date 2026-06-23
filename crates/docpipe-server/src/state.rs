@@ -33,9 +33,16 @@ impl AppState {
             builder = builder.mineru(Arc::new(mineru));
         }
         let sdk = builder.build().map_err(|e| format!("build sdk: {e}"))?;
-        let ram_tier =
-            if mineru_configured { "full".to_string() } else { "lite".to_string() };
-        Ok(Self { sdk, ram_tier, mineru_configured })
+        let ram_tier = if mineru_configured {
+            "full".to_string()
+        } else {
+            "lite".to_string()
+        };
+        Ok(Self {
+            sdk,
+            ram_tier,
+            mineru_configured,
+        })
     }
 
     /// 测试用：不接真实 OCR/Ollama，用内存 store + dummy backends。
@@ -53,7 +60,10 @@ impl AppState {
                 _i: &[u8],
                 _d: u32,
             ) -> docpipe_core::error::Result<OcrResult> {
-                Ok(OcrResult { blocks: vec![], avg_confidence: None })
+                Ok(OcrResult {
+                    blocks: vec![],
+                    avg_confidence: None,
+                })
             }
             fn name(&self) -> &str {
                 "no-ocr"
@@ -63,11 +73,10 @@ impl AppState {
         struct NoEmbed;
         #[async_trait]
         impl Embedder for NoEmbed {
-            async fn embed_batch(
-                &self,
-                t: &[&str],
-            ) -> docpipe_core::error::Result<Vec<Vec<f32>>> {
-                Ok(t.iter().map(|s| vec![s.chars().count() as f32, 0.0, 0.0]).collect())
+            async fn embed_batch(&self, t: &[&str]) -> docpipe_core::error::Result<Vec<Vec<f32>>> {
+                Ok(t.iter()
+                    .map(|s| vec![s.chars().count() as f32, 0.0, 0.0])
+                    .collect())
             }
             fn dim(&self) -> usize {
                 3
@@ -83,6 +92,10 @@ impl AppState {
             .embedder(Arc::new(NoEmbed))
             .build()
             .unwrap();
-        Self { sdk, ram_tier: "lite".into(), mineru_configured: false }
+        Self {
+            sdk,
+            ram_tier: "lite".into(),
+            mineru_configured: false,
+        }
     }
 }

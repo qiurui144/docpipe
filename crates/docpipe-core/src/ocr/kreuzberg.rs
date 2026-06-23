@@ -121,9 +121,7 @@ impl OcrBackend for KreuzbergBackend {
         //   most_angle=true    全图统一方向
         let result = lock
             .detect_from_path(path_str, 50, 2048, 0.6, 0.3, 1.6, true, true)
-            .map_err(|e| {
-                DocError::OcrBackendUnavailable(format!("detect_from_path: {e}"))
-            })?;
+            .map_err(|e| DocError::OcrBackendUnavailable(format!("detect_from_path: {e}")))?;
 
         // lock 先 drop，再 drop tmp（lock 与 tmp 释放顺序）
         drop(lock);

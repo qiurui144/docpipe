@@ -46,8 +46,26 @@ mod tests {
     fn plain_text_joins_blocks_with_newline() {
         let r = OcrResult {
             blocks: vec![
-                TextBlock { text: "line one".into(), bbox: BBox { x: 0, y: 0, w: 1, h: 1 }, confidence: 0.9 },
-                TextBlock { text: "line two".into(), bbox: BBox { x: 0, y: 2, w: 1, h: 1 }, confidence: 0.8 },
+                TextBlock {
+                    text: "line one".into(),
+                    bbox: BBox {
+                        x: 0,
+                        y: 0,
+                        w: 1,
+                        h: 1,
+                    },
+                    confidence: 0.9,
+                },
+                TextBlock {
+                    text: "line two".into(),
+                    bbox: BBox {
+                        x: 0,
+                        y: 2,
+                        w: 1,
+                        h: 1,
+                    },
+                    confidence: 0.8,
+                },
             ],
             avg_confidence: Some(0.85),
         };
@@ -58,9 +76,36 @@ mod tests {
     fn plain_text_skips_empty_blocks() {
         let r = OcrResult {
             blocks: vec![
-                TextBlock { text: "a".into(), bbox: BBox { x: 0, y: 0, w: 1, h: 1 }, confidence: 0.9 },
-                TextBlock { text: "".into(), bbox: BBox { x: 0, y: 1, w: 1, h: 1 }, confidence: 0.0 },
-                TextBlock { text: "b".into(), bbox: BBox { x: 0, y: 2, w: 1, h: 1 }, confidence: 0.9 },
+                TextBlock {
+                    text: "a".into(),
+                    bbox: BBox {
+                        x: 0,
+                        y: 0,
+                        w: 1,
+                        h: 1,
+                    },
+                    confidence: 0.9,
+                },
+                TextBlock {
+                    text: "".into(),
+                    bbox: BBox {
+                        x: 0,
+                        y: 1,
+                        w: 1,
+                        h: 1,
+                    },
+                    confidence: 0.0,
+                },
+                TextBlock {
+                    text: "b".into(),
+                    bbox: BBox {
+                        x: 0,
+                        y: 2,
+                        w: 1,
+                        h: 1,
+                    },
+                    confidence: 0.9,
+                },
             ],
             avg_confidence: None,
         };

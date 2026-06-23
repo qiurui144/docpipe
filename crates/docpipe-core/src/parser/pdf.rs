@@ -8,7 +8,9 @@ use super::pdf_render::{extract_text_layer, is_text_layer, page_count, render_pa
 use super::DocParser;
 use crate::error::{DocError, Result};
 use crate::ocr::{OcrBackend, OcrResult};
-use crate::types::{DocFormat, OcrBackendKind, PageContent, ParseConfig, ParsedDocument, TextBlock};
+use crate::types::{
+    DocFormat, OcrBackendKind, PageContent, ParseConfig, ParsedDocument, TextBlock,
+};
 
 /// 将 OCR 后端名映射为 OcrBackendKind。
 /// "mineru" → Mineru；其余（含 "kreuzberg"）→ Kreuzberg。
@@ -33,7 +35,12 @@ impl PdfParser {
 pub fn build_parsed_from_text_layer(doc_id: String, pages: &[PageText]) -> ParsedDocument {
     let page_contents: Vec<PageContent> = pages
         .iter()
-        .map(|p| PageContent { page_num: p.page_num, text: p.text.clone(), blocks: vec![], tables: vec![] })
+        .map(|p| PageContent {
+            page_num: p.page_num,
+            text: p.text.clone(),
+            blocks: vec![],
+            tables: vec![],
+        })
         .collect();
     ParsedDocument {
         doc_id,
@@ -49,7 +56,12 @@ pub fn build_parsed_from_text_layer(doc_id: String, pages: &[PageText]) -> Parse
 /// 从单页 OCR 结果构造 PageContent。
 pub fn build_page_from_ocr(page_num: u32, result: &OcrResult) -> PageContent {
     let blocks: Vec<TextBlock> = result.blocks.clone();
-    PageContent { page_num, text: result.plain_text(), blocks, tables: vec![] }
+    PageContent {
+        page_num,
+        text: result.plain_text(),
+        blocks,
+        tables: vec![],
+    }
 }
 
 #[async_trait]
@@ -115,7 +127,12 @@ mod tests {
             Ok(OcrResult {
                 blocks: vec![TextBlock {
                     text: "某甲".into(),
-                    bbox: BBox { x: 1, y: 2, w: 3, h: 4 },
+                    bbox: BBox {
+                        x: 1,
+                        y: 2,
+                        w: 3,
+                        h: 4,
+                    },
                     confidence: 0.99,
                 }],
                 avg_confidence: Some(0.99),
@@ -130,9 +147,10 @@ mod tests {
     #[tokio::test]
     async fn text_layer_pdf_skips_ocr() {
         // 构造一个伪 PdfParser 流程：直接测 build_parsed_from_text_layer 辅助函数（无需真实 PDF）。
-        let pages = vec![
-            crate::parser::pdf_render::PageText { page_num: 1, text: "a".repeat(500) },
-        ];
+        let pages = vec![crate::parser::pdf_render::PageText {
+            page_num: 1,
+            text: "a".repeat(500),
+        }];
         let doc = build_parsed_from_text_layer("doc1".into(), &pages);
         assert!(!doc.ocr_used);
         assert_eq!(doc.backend, crate::types::OcrBackendKind::TextLayer);

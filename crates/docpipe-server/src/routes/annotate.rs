@@ -2,11 +2,11 @@
 
 use std::sync::Arc;
 
-use docpipe_core::annotator::AnnotateRequest;
-use docpipe_core::types::{AnnotationSource, BBox};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
+use docpipe_core::annotator::AnnotateRequest;
+use docpipe_core::types::{AnnotationSource, BBox};
 use serde::Deserialize;
 
 use crate::state::AppState;
@@ -50,7 +50,12 @@ pub async fn annotate(
             })),
         );
     };
-    let bbox = req.locator.bbox.map(|b| BBox { x: b[0], y: b[1], w: b[2], h: b[3] });
+    let bbox = req.locator.bbox.map(|b| BBox {
+        x: b[0],
+        y: b[1],
+        w: b[2],
+        h: b[3],
+    });
     let item = state.sdk.annotate(AnnotateRequest {
         doc_id: req.doc_id,
         original_text: req.original_text,

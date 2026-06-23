@@ -79,7 +79,12 @@ mod tests {
             color: "#FF4444".into(),
             page_num: 1,
             char_offset: 240,
-            bbox: Some(BBox { x: 1189, y: 350, w: 151, h: 30 }),
+            bbox: Some(BBox {
+                x: 1189,
+                y: 350,
+                w: 151,
+                h: 30,
+            }),
             source: AnnotationSource::Ai,
             skill_metadata: None,
         };

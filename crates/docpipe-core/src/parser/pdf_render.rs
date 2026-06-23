@@ -25,7 +25,10 @@ pub fn extract_text_layer(pdf_bytes: &[u8]) -> Result<Vec<PageText>> {
     let pages = parts
         .iter()
         .enumerate()
-        .map(|(i, t)| PageText { page_num: (i + 1) as u32, text: t.to_string() })
+        .map(|(i, t)| PageText {
+            page_num: (i + 1) as u32,
+            text: t.to_string(),
+        })
         .collect();
     Ok(pages)
 }
@@ -76,7 +79,11 @@ fn pdfium() -> Result<&'static std::sync::Mutex<pdfium_render::prelude::Pdfium>>
     use std::sync::{Mutex, OnceLock};
     static CELL: OnceLock<std::result::Result<Mutex<pdfium_render::prelude::Pdfium>, String>> =
         OnceLock::new();
-    match CELL.get_or_init(|| bind_pdfium_once().map(Mutex::new).map_err(|e| e.to_string())) {
+    match CELL.get_or_init(|| {
+        bind_pdfium_once()
+            .map(Mutex::new)
+            .map_err(|e| e.to_string())
+    }) {
         Ok(m) => Ok(m),
         Err(s) => Err(DocError::Other(s.clone())),
     }
@@ -94,7 +101,9 @@ fn bind_pdfium_once() -> Result<pdfium_render::prelude::Pdfium> {
         let bindings = if std::path::Path::new(&path_str).is_file() {
             Pdfium::bind_to_library(&path_str)
         } else {
-            Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(path_str.as_str()))
+            Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(
+                path_str.as_str(),
+            ))
         }
         .map_err(|e| DocError::Other(format!("pdfium bind ({path_str}): {e}")))?;
         Ok(Pdfium::new(bindings))
@@ -115,8 +124,14 @@ mod tests {
     #[test]
     fn is_text_layer_true_above_threshold() {
         let pages = vec![
-            PageText { page_num: 1, text: "a".repeat(500) },
-            PageText { page_num: 2, text: "b".repeat(500) },
+            PageText {
+                page_num: 1,
+                text: "a".repeat(500),
+            },
+            PageText {
+                page_num: 2,
+                text: "b".repeat(500),
+            },
         ];
         assert!(is_text_layer(&pages));
     }
@@ -125,8 +140,14 @@ mod tests {
     fn is_text_layer_false_for_scanned() {
         // 扫描件：pdf-extract 抽不到字层，平均 < 20 字符/页。
         let pages = vec![
-            PageText { page_num: 1, text: "".into() },
-            PageText { page_num: 2, text: "x".into() },
+            PageText {
+                page_num: 1,
+                text: "".into(),
+            },
+            PageText {
+                page_num: 2,
+                text: "x".into(),
+            },
         ];
         assert!(!is_text_layer(&pages));
     }

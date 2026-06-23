@@ -4,8 +4,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use docpipe_core::ocr::{OcrBackend, OcrResult};
 use docpipe_core::ocr::kreuzberg::KreuzbergBackend;
+use docpipe_core::ocr::{OcrBackend, OcrResult};
 use docpipe_core::parser::pdf::PdfParser;
 use docpipe_core::parser::DocParser;
 use docpipe_core::types::ParseConfig;
@@ -41,11 +41,17 @@ impl OcrBackend for NoOcr {
 async fn test_bank_pdf_ocr_path() {
     let ocr = Arc::new(KreuzbergBackend::new().expect("PP-OCR ONNX models must be present"));
     let parser = PdfParser::new(ocr);
-    let bytes = std::fs::read(fixture("bank_page1.pdf")).expect("bank_page1.pdf fixture must be present");
+    let bytes =
+        std::fs::read(fixture("bank_page1.pdf")).expect("bank_page1.pdf fixture must be present");
     let doc = parser
         .parse(
             &bytes,
-            &ParseConfig { ocr: true, table_structure: false, max_pages: Some(1), dpi: 300 },
+            &ParseConfig {
+                ocr: true,
+                table_structure: false,
+                max_pages: Some(1),
+                dpi: 300,
+            },
         )
         .await
         .unwrap();
@@ -71,7 +77,11 @@ async fn test_bank_pdf_ocr_path() {
         .collect();
     let total = doc.pages[0].blocks.len().max(1);
     let ratio = low_conf.len() as f32 / total as f32;
-    assert!(ratio < 0.2, "低置信度块比例过高: {ratio:.2} (low={} total={total})", low_conf.len());
+    assert!(
+        ratio < 0.2,
+        "低置信度块比例过高: {ratio:.2} (low={} total={total})",
+        low_conf.len()
+    );
 }
 
 /// 字层 PDF 路径：text-layer 检测到时绝不调用 OCR backend，且 ocr_used == false。
@@ -83,15 +93,17 @@ async fn test_text_layer_no_ocr() {
     let parser = PdfParser::new(Arc::new(NoOcr));
     let bytes = std::fs::read(fixture("text_layer_sample.pdf"))
         .expect("text_layer_sample.pdf fixture must be present");
-    let doc = parser
-        .parse(&bytes, &ParseConfig::default())
-        .await
-        .unwrap();
+    let doc = parser.parse(&bytes, &ParseConfig::default()).await.unwrap();
 
     // 字层路径断言：ocr_used 必须为 false（NoOcr 若被调用则 panic）。
     assert!(!doc.ocr_used, "text-layer PDF 不应设置 ocr_used=true");
 
-    let combined: String = doc.pages.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join("\n");
+    let combined: String = doc
+        .pages
+        .iter()
+        .map(|p| p.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
     let expected = std::fs::read_to_string(fixture("zuhe_page2_expected.txt"))
         .expect("golden file zuhe_page2_expected.txt must be present");
 

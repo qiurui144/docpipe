@@ -19,7 +19,9 @@ async fn main() {
         std::process::exit(1);
     });
     let app = routes::router(Arc::new(state));
-    let listener = tokio::net::TcpListener::bind(&cfg.bind_addr).await.expect("bind");
+    let listener = tokio::net::TcpListener::bind(&cfg.bind_addr)
+        .await
+        .expect("bind");
     tracing::info!("docpipe-server listening on {}", cfg.bind_addr);
     axum::serve(listener, app).await.expect("serve");
 }

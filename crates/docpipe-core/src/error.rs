@@ -71,13 +71,25 @@ mod tests {
         assert_eq!(DocError::FormatUnsupported.http_status(), 400);
         assert_eq!(DocError::FileTooLarge.code(), "file-too-large");
         assert_eq!(DocError::FileTooLarge.http_status(), 413);
-        assert_eq!(DocError::OcrBackendUnavailable("x".into()).code(), "ocr-backend-unavailable");
-        assert_eq!(DocError::OcrBackendUnavailable("x".into()).http_status(), 503);
+        assert_eq!(
+            DocError::OcrBackendUnavailable("x".into()).code(),
+            "ocr-backend-unavailable"
+        );
+        assert_eq!(
+            DocError::OcrBackendUnavailable("x".into()).http_status(),
+            503
+        );
         assert_eq!(DocError::MineruTimeout.code(), "mineru-timeout");
         assert_eq!(DocError::MineruTimeout.http_status(), 504);
-        assert_eq!(DocError::EmbeddingFailed("x".into()).code(), "embedding-failed");
+        assert_eq!(
+            DocError::EmbeddingFailed("x".into()).code(),
+            "embedding-failed"
+        );
         assert_eq!(DocError::EmbeddingFailed("x".into()).http_status(), 502);
-        assert_eq!(DocError::VectorStoreError("x".into()).code(), "vector-store-error");
+        assert_eq!(
+            DocError::VectorStoreError("x".into()).code(),
+            "vector-store-error"
+        );
         assert_eq!(DocError::VectorStoreError("x".into()).http_status(), 500);
         assert_eq!(DocError::ParseEmptyResult.code(), "parse-empty-result");
         assert_eq!(DocError::ParseEmptyResult.http_status(), 422);

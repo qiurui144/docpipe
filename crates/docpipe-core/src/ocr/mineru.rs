@@ -37,7 +37,11 @@ impl MinerUBackend {
             .timeout(Duration::from_secs(30))
             .build()
             .expect("reqwest client build failed");
-        Self { url, client, timeout_secs: 30 }
+        Self {
+            url,
+            client,
+            timeout_secs: 30,
+        }
     }
 
     /// 健康探测：GET {url}/health。5 s 探测超时；任何错误（含连接失败/超时）→ false。
@@ -102,10 +106,16 @@ impl OcrBackend for MinerUBackend {
             });
             conf_sum += b.confidence;
         }
-        let avg_confidence =
-            if blocks.is_empty() { None } else { Some(conf_sum / blocks.len() as f32) };
+        let avg_confidence = if blocks.is_empty() {
+            None
+        } else {
+            Some(conf_sum / blocks.len() as f32)
+        };
 
-        Ok(OcrResult { blocks, avg_confidence })
+        Ok(OcrResult {
+            blocks,
+            avg_confidence,
+        })
     }
 
     fn name(&self) -> &str {
@@ -131,7 +141,11 @@ mod tests {
     #[tokio::test]
     async fn health_ok() {
         let mut server = mockito::Server::new_async().await;
-        let _m = server.mock("GET", "/health").with_status(200).create_async().await;
+        let _m = server
+            .mock("GET", "/health")
+            .with_status(200)
+            .create_async()
+            .await;
         let backend = MinerUBackend::new(server.url());
         assert!(backend.health().await);
     }
@@ -139,8 +153,7 @@ mod tests {
     #[tokio::test]
     async fn recognize_ok() {
         let mut server = mockito::Server::new_async().await;
-        let body =
-            r#"{"blocks":[{"text":"表格单元","bbox":[10,20,30,40],"confidence":0.97}]}"#;
+        let body = r#"{"blocks":[{"text":"表格单元","bbox":[10,20,30,40],"confidence":0.97}]}"#;
         let _m = server
             .mock("POST", "/file_parse")
             .with_status(200)

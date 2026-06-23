@@ -27,7 +27,12 @@ pub struct DocpipeBuilder {
 
 impl DocpipeBuilder {
     pub fn new() -> Self {
-        Self { ocr: None, store: None, embedder: None, mineru: None }
+        Self {
+            ocr: None,
+            store: None,
+            embedder: None,
+            mineru: None,
+        }
     }
 
     pub fn ocr_backend(mut self, b: Arc<dyn OcrBackend>) -> Self {
@@ -52,9 +57,15 @@ impl DocpipeBuilder {
 
     pub fn build(self) -> Result<Docpipe> {
         Ok(Docpipe {
-            ocr: self.ocr.ok_or_else(|| DocError::Other("ocr_backend required".into()))?,
-            store: self.store.ok_or_else(|| DocError::Other("vector_store required".into()))?,
-            embedder: self.embedder.ok_or_else(|| DocError::Other("embedder required".into()))?,
+            ocr: self
+                .ocr
+                .ok_or_else(|| DocError::Other("ocr_backend required".into()))?,
+            store: self
+                .store
+                .ok_or_else(|| DocError::Other("vector_store required".into()))?,
+            embedder: self
+                .embedder
+                .ok_or_else(|| DocError::Other("embedder required".into()))?,
             mineru: self.mineru,
         })
     }
@@ -90,9 +101,8 @@ impl Docpipe {
                             self.ocr.clone()
                         }
                         None => {
-                            warnings.push(
-                                "mineru-not-configured, fallback to kreuzberg".to_string(),
-                            );
+                            warnings
+                                .push("mineru-not-configured, fallback to kreuzberg".to_string());
                             self.ocr.clone()
                         }
                     }
@@ -114,11 +124,7 @@ impl Docpipe {
 
     /// 幂等 ingest：先删旧 doc 的所有 chunk，再分块 → 向量化 → upsert。
     /// chunk_id 格式："{doc_id}:{uuid}"。返回已写入的 chunk_id 列表。
-    pub async fn ingest(
-        &self,
-        parsed: &ParsedDocument,
-        collection: &str,
-    ) -> Result<Vec<String>> {
+    pub async fn ingest(&self, parsed: &ParsedDocument, collection: &str) -> Result<Vec<String>> {
         // 幂等：先删旧 doc 向量。
         self.store.delete(&parsed.doc_id, collection).await?;
 
@@ -197,7 +203,10 @@ mod tests {
     #[async_trait]
     impl OcrBackend for DummyOcr {
         async fn recognize(&self, _i: &[u8], _d: u32) -> crate::error::Result<OcrResult> {
-            Ok(OcrResult { blocks: vec![], avg_confidence: None })
+            Ok(OcrResult {
+                blocks: vec![],
+                avg_confidence: None,
+            })
         }
         fn name(&self) -> &str {
             "dummy"
@@ -209,7 +218,10 @@ mod tests {
     impl Embedder for DummyEmbedder {
         async fn embed_batch(&self, texts: &[&str]) -> crate::error::Result<Vec<Vec<f32>>> {
             // 简单确定性向量：长度 3，第一维 = 文本字符数。
-            Ok(texts.iter().map(|t| vec![t.chars().count() as f32, 0.0, 0.0]).collect())
+            Ok(texts
+                .iter()
+                .map(|t| vec![t.chars().count() as f32, 0.0, 0.0])
+                .collect())
         }
         fn dim(&self) -> usize {
             3
@@ -254,7 +266,10 @@ mod tests {
         let ids = sdk.ingest(&parsed, "default").await.unwrap();
         assert!(!ids.is_empty());
         assert!(ids.iter().all(|id| id.starts_with("docX:")));
-        let results = sdk.search("一个比较长的句子内容内容内容内容。", "default", 1).await.unwrap();
+        let results = sdk
+            .search("一个比较长的句子内容内容内容内容。", "default", 1)
+            .await
+            .unwrap();
         assert_eq!(results.len(), 1);
     }
 
@@ -285,7 +300,10 @@ mod tests {
         sdk.ingest(&parsed, "default").await.unwrap();
         sdk.ingest(&parsed, "default").await.unwrap();
         let results = sdk.search("唯一句子内容。", "default", 10).await.unwrap();
-        let from_docy = results.iter().filter(|r| r.chunk_id.starts_with("docY:")).count();
+        let from_docy = results
+            .iter()
+            .filter(|r| r.chunk_id.starts_with("docY:"))
+            .count();
         assert_eq!(from_docy, 1);
     }
 }

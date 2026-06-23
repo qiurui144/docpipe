@@ -11,6 +11,11 @@ use async_trait::async_trait;
 #[async_trait]
 pub trait VectorStore: Send + Sync {
     async fn upsert(&self, chunks: &[EmbeddedChunk], collection: &str) -> Result<()>;
-    async fn search(&self, query_vec: &[f32], collection: &str, top_k: usize) -> Result<Vec<SearchResult>>;
+    async fn search(
+        &self,
+        query_vec: &[f32],
+        collection: &str,
+        top_k: usize,
+    ) -> Result<Vec<SearchResult>>;
     async fn delete(&self, doc_id: &str, collection: &str) -> Result<()>;
 }
