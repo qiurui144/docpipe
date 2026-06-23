@@ -3,3 +3,5 @@
 *.db
 .DS_Store
 /tmp
+crates/attune-docs-core/tests/fixtures/*.pdf
+crates/attune-docs-core/tests/fixtures/*.docx
