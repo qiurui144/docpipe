@@ -5,6 +5,7 @@ pub mod types;
 pub mod parser;
 pub mod ocr;
 pub mod chunker;
+pub mod embedder;
 
 #[cfg(test)]
 mod scaffold_tests {
