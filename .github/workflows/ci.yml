@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    name: rust ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # ort downloads the ONNX Runtime, rusqlite + vendored sqlite-vec compile C
+      # via the platform toolchain (MSVC on windows-latest, gcc on ubuntu).
+      # pdfium-render binds at runtime, so the fixture-dependent tests are #[ignore].
+      - name: Build
+        run: cargo build --workspace --locked
+      - name: Test (skips fixture-gated #[ignore] tests)
+        run: cargo test --workspace --locked
+
+  lint:
+    name: fmt + clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: rustfmt
+        run: cargo fmt --all --check
+      - name: clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  python-client:
+    name: python client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install + test
+        run: |
+          pip install -e "clients/python[test]"
+          python -m pytest clients/python/tests -q
+
+  typescript-client:
+    name: typescript client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install + test
+        working-directory: clients/typescript
+        run: |
+          npm install --no-audit --no-fund
+          npx vitest run
