@@ -7,6 +7,7 @@ pub struct Config {
     pub embed_model: String,
     pub sqlite_path: String,
     pub mineru_url: Option<String>,
+    #[allow(dead_code)]  // 保留供将来 OCR 并发控制使用（spec §8 MAX_OCR_CONCURRENCY）
     pub max_ocr_concurrency: usize,
 }
 

@@ -1,0 +1,26 @@
+# Lite tier — SQLite + sqlite-vec，无额外容器（spec §8 零成本路径）。
+# 适用场景：单机自托管、开发/测试环境、小型团队（< 50 用户）。
+# WeaviateStore 在 v1.1 才引入；v1.0 lite 路径全部走 sqlite-vec 向量索引。
+services:
+  attune-docs-server:
+    image: attune-docs-server:latest
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    ports:
+      - "8200:8200"
+    environment:
+      BIND_ADDR: "0.0.0.0:8200"
+      DATABASE_URL: "sqlite:///data/attune-docs.db"
+      OLLAMA_URL: "${OLLAMA_URL:-http://host.docker.internal:11434}"
+      EMBED_MODEL: "${EMBED_MODEL:-bge-m3}"
+      SQLITE_PATH: "/data/attune-docs.db"
+      MAX_OCR_CONCURRENCY: "2"
+    volumes:
+      - attune_docs_data:/data
+      - attune_docs_models:/root/.local/share/attune-docs/models
+    restart: unless-stopped
+
+volumes:
+  attune_docs_data:
+  attune_docs_models:
