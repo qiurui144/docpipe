@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/attune-docs-core"]
+members = ["crates/attune-docs-core", "crates/attune-docs-server"]
 
 [workspace.package]
 edition = "2021"

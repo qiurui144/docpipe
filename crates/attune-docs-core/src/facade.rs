@@ -177,6 +177,11 @@ impl AttuneDocs {
     pub fn annotate(&self, req: AnnotateRequest) -> AnnotatableItem {
         create_item(req)
     }
+
+    /// 直接暴露底层 embedder（/v1/embed 路由用）。
+    pub async fn embed_texts(&self, texts: &[&str]) -> crate::error::Result<Vec<Vec<f32>>> {
+        self.embedder.embed_batch(texts).await
+    }
 }
 
 #[cfg(test)]
@@ -251,6 +256,13 @@ mod tests {
         assert!(ids.iter().all(|id| id.starts_with("docX:")));
         let results = sdk.search("一个比较长的句子内容内容内容内容。", "default", 1).await.unwrap();
         assert_eq!(results.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn embed_texts_delegates_to_embedder() {
+        let sdk = build_sdk();
+        let vecs = sdk.embed_texts(&["ab"]).await.unwrap();
+        assert_eq!(vecs[0][0], 2.0);
     }
 
     #[tokio::test]
