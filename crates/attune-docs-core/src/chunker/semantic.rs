@@ -114,15 +114,44 @@ mod tests {
 
     #[test]
     fn overlap_repeats_tail_sentence() {
+        // 每句 7 字符，chunk_size=14 恰好容纳 2 句；overlap=0.5 → back=1，下块回退 1 句。
+        // 期望：chunk[0]={s1,s2}，chunk[1]={s2,s3}，两块共享句子 "句子二内容。"。
         let text = "句子一内容。句子二内容。句子三内容。句子四内容。";
-        let cfg = ChunkConfig { chunk_size: 12, overlap: 0.5, respect_headings: false };
-        let chunks = chunk_text(text, &cfg);
-        assert!(chunks.len() >= 2);
-        // 相邻 chunk 应共享至少一句（overlap）。
-        let first_sentences: Vec<&str> = chunks[0].text.split_inclusive('。').collect();
-        let second_start = &chunks[1].text;
-        let last_of_first = first_sentences.last().unwrap();
-        assert!(second_start.contains(last_of_first.trim()) || chunks[1].char_offset < chunks[0].char_offset + chunks[0].text.chars().count() as u32);
+        let cfg_overlap = ChunkConfig { chunk_size: 14, overlap: 0.5, respect_headings: false };
+        let chunks = chunk_text(text, &cfg_overlap);
+        assert!(chunks.len() >= 2, "overlap 模式应产生至少 2 个 chunk，实际 {}", chunks.len());
+
+        // 提取 chunk[0] 与 chunk[1] 的句子集合（以 '。' 为分隔，过滤空串）。
+        let sentences_of = |s: &str| -> std::collections::HashSet<String> {
+            s.split_inclusive('。')
+                .map(|seg| seg.trim().to_string())
+                .filter(|seg| !seg.is_empty())
+                .collect()
+        };
+        let s0: std::collections::HashSet<String> = sentences_of(&chunks[0].text);
+        let s1: std::collections::HashSet<String> = sentences_of(&chunks[1].text);
+        // 重叠断言：两块句子集合必须有非空交集，证明 overlap 真的把尾句重复到下块头部。
+        let shared: std::collections::HashSet<_> = s0.intersection(&s1).collect();
+        assert!(
+            !shared.is_empty(),
+            "overlap=0.5 时相邻 chunk 应共享至少一句，实际 chunk[0]={:?} chunk[1]={:?}",
+            chunks[0].text,
+            chunks[1].text
+        );
+
+        // 对照断言：overlap=0.0 时相邻 chunk 应无共享句子（证明上面的断言不是平凡的）。
+        let cfg_no_overlap = ChunkConfig { chunk_size: 14, overlap: 0.0, respect_headings: false };
+        let chunks_no = chunk_text(text, &cfg_no_overlap);
+        if chunks_no.len() >= 2 {
+            let s0_no: std::collections::HashSet<String> = sentences_of(&chunks_no[0].text);
+            let s1_no: std::collections::HashSet<String> = sentences_of(&chunks_no[1].text);
+            let shared_no: std::collections::HashSet<_> = s0_no.intersection(&s1_no).collect();
+            assert!(
+                shared_no.is_empty(),
+                "overlap=0.0 时相邻 chunk 不应共享任何句子，实际共享: {:?}",
+                shared_no
+            );
+        }
     }
 
     #[test]
@@ -132,6 +161,35 @@ mod tests {
         let chunks = chunk_text(text, &cfg);
         // 标题独立成块（或作为后续块的引导，但不与正文混在一个超大块里时标题单列）。
         assert!(chunks.iter().any(|c| c.text.contains("## 标题")));
+    }
+
+    #[test]
+    fn heading_after_body_starts_new_chunk() {
+        // 验证规则：当 buffer 非空时遇到标题，应先结束当前块，让标题领起新块。
+        // 即：不存在任何单个 chunk 同时包含正文和该正文之后的标题。
+        let text = "前面的正文内容。## 标题\n标题后的正文。";
+        let cfg = ChunkConfig { chunk_size: 512, overlap: 0.0, respect_headings: true };
+        let chunks = chunk_text(text, &cfg);
+        // 找出含 "## 标题" 的 chunk，断言该 chunk 不含前序正文。
+        for c in &chunks {
+            if c.text.contains("## 标题") {
+                assert!(
+                    !c.text.contains("前面的正文内容"),
+                    "标题块不应包含前序正文：{:?}",
+                    c.text
+                );
+            }
+        }
+        // 同时确认"前面的正文内容"确实存在于某块中（防止输入被静默丢弃）。
+        assert!(
+            chunks.iter().any(|c| c.text.contains("前面的正文内容")),
+            "正文内容应存在于某个 chunk 中"
+        );
+        // 确认"## 标题"确实存在于某块中。
+        assert!(
+            chunks.iter().any(|c| c.text.contains("## 标题")),
+            "标题应存在于某个 chunk 中"
+        );
     }
 
     #[test]
