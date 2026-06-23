@@ -1,5 +1,7 @@
 # docpipe
 
+> [中文文档](./README.zh.md)
+
 **Self-hostable document pipeline — parse · OCR · chunk · embed · search · annotate.**
 
 A general-purpose, industry-agnostic document-processing SDK. A pure-Rust core with a pluggable
