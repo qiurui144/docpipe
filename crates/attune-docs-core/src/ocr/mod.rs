@@ -1,6 +1,7 @@
 //! OCR 后端 trait — KreuzbergBackend（默认，PP-OCRv4 ONNX）/ MinerUBackend（HTTP sidecar）。
 
 pub mod kreuzberg;
+pub mod mineru;
 pub mod models;
 
 use crate::error::Result;

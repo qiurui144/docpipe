@@ -20,6 +20,8 @@ pdf-extract = { workspace = true }
 pdfium-render = { workspace = true }
 docx-rs = { workspace = true }
 scraper = { workspace = true }
+reqwest = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
+mockito = "1"

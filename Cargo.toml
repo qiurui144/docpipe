@@ -17,7 +17,7 @@ pdfium-render = "0.9"
 docx-rs = "0.4"
 scraper = "0.21"
 axum = { version = "0.8", features = ["json", "multipart"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "blocking"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "blocking", "multipart"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 sqlite-vec = "0.1.10-alpha.4"
 tokio = { version = "1", features = ["full"] }
