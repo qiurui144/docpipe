@@ -15,34 +15,34 @@ impl DocParser for HtmlParser {
         let html = String::from_utf8_lossy(bytes);
         let doc = Html::parse_document(&html);
 
-        // 仅选取可见内容标签（排除 script/style）。
-        // scraper body.text() 会包含 <script>/<style> 内的文本节点，
-        // 故直接选择具体可见元素，不使用 body.text()。
-        let visible_sel = Selector::parse(
-            "body h1, body h2, body h3, body h4, body h5, body h6, \
-             body p, body li, body td, body th, body span, body div, \
-             body a, body blockquote, body pre, body figcaption, body caption",
-        )
-        .expect("selector is valid");
-
-        let mut lines: Vec<String> = Vec::new();
-        for el in doc.select(&visible_sel) {
-            // el.text() 会继续下探子元素（包括可能的 script/style 子节点）。
-            // 但选择器已排除 script/style，且实际 body 内 script/style 均为顶层子元素，
-            // 不在可见元素内部，故此处迭代是安全的。
-            let t: String = el
-                .text()
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-                .collect::<Vec<_>>()
-                .join(" ");
-            if !t.is_empty() {
-                lines.push(t);
+        // 收集所有 script/style 中的文本节点，用于后续过滤。
+        // scraper 的 body.text() 是叶子节点迭代器（不重复父子），
+        // 但 <script>/<style> 中的文本节点也会被包含，需主动排除。
+        let script_style_sel = Selector::parse("script, style").expect("static selector");
+        let mut bad: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for el in doc.select(&script_style_sel) {
+            for t in el.text() {
+                let t = t.trim();
+                if !t.is_empty() {
+                    bad.insert(t.to_string());
+                }
             }
         }
 
-        // 去重（父子元素会导致内容重复收集，保留最外层匹配）。
-        let text = dedup_lines(lines);
+        // 遍历 body 所有叶子文本节点，跳过 script/style 内容。
+        // body.text() 只产生叶子节点，不存在父子重复问题，无需去重。
+        let body_sel = Selector::parse("body").expect("static selector");
+        let mut lines: Vec<String> = Vec::new();
+        if let Some(body) = doc.select(&body_sel).next() {
+            for t in body.text() {
+                let t = t.trim();
+                if !t.is_empty() && !bad.contains(t) {
+                    lines.push(t.to_string());
+                }
+            }
+        }
+
+        let text = lines.join("\n");
 
         if text.trim().is_empty() {
             return Err(DocError::ParseEmptyResult);
@@ -62,25 +62,6 @@ impl DocParser for HtmlParser {
     fn supported_formats(&self) -> &[&str] {
         &["html"]
     }
-}
-
-/// 对齐连续重复内容去重：
-/// 由于选择器涵盖父子元素，同一段文字可能来自 `<div>` 和其内的 `<p>`，产生重复行。
-/// 策略：若某行是上一行的子串则跳过（父元素匹配先，子元素文本与父相同时去重）。
-fn dedup_lines(lines: Vec<String>) -> String {
-    if lines.is_empty() {
-        return String::new();
-    }
-    let mut result: Vec<String> = Vec::with_capacity(lines.len());
-    let mut prev = String::new();
-    for line in lines {
-        // 跳过与上一行相同或被上一行包含的行。
-        if !prev.contains(line.as_str()) {
-            result.push(line.clone());
-            prev = line;
-        }
-    }
-    result.join("\n")
 }
 
 #[cfg(test)]
@@ -109,5 +90,19 @@ mod tests {
         let parser = HtmlParser;
         let err = parser.parse(html, &ParseConfig::default()).await.unwrap_err();
         assert_eq!(err.code(), "parse-empty-result");
+    }
+
+    /// 回归测试：旧白名单方案会丢弃 <strong>/<em>/<section> 等标签内的文本，
+    /// 新方案遍历所有 body 叶子节点，确保这些内容不再丢失。
+    #[tokio::test]
+    async fn html_extracts_text_from_inline_and_sectioning_tags() {
+        let html = b"<html><body><strong>\xe8\xad\xa6\xe5\x91\x8a\xef\xbc\x9a</strong>\xe4\xb8\x8d\xe8\xa6\x81\xe7\xbb\xa7\xe7\xbb\xad\xe3\x80\x82<section>\xe6\xad\xa3\xe6\x96\x87\xe6\xae\xb5\xe8\x90\xbd</section></body></html>";
+        let parser = HtmlParser;
+        let doc = parser.parse(html, &ParseConfig::default()).await.unwrap();
+        let text = &doc.pages[0].text;
+        // 旧白名单会丢弃 <strong> 和 <section> 内的文本
+        assert!(text.contains("警告："), "应包含 <strong> 内的文本");
+        assert!(text.contains("不要继续。"), "应包含 <strong> 后裸文本节点");
+        assert!(text.contains("正文段落"), "应包含 <section> 内的文本");
     }
 }
