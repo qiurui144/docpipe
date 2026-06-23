@@ -109,17 +109,27 @@ export LD_LIBRARY_PATH="$(pwd)/docker/pdfium:$LD_LIBRARY_PATH"
 
 > `docker/pdfium/` 已加入 `.gitignore`，不入版本库。
 
-### ONNX 模型自动下载
+### PP-OCR ONNX 模型（v1.0 需手动准备）
 
-PP-OCRv4 ONNX 模型在首次使用时自动下载到：
+v1.0 **不自动下载模型**：`KreuzbergBackend::new()` 在模型缺失时返回 `ocr-backend-unavailable`，
+服务启动即失败（`AppState::from_config` 会因此退出）。必须先把以下 4 个文件放到模型目录：
 
 ```
 ~/.local/share/attune-docs/models/ppocr/
+  ├── ch_PP-OCRv5_det_mobile.onnx        # ~4.7 MB  检测  (源 SWHL/RapidOCR PP-OCRv4 det)
+  ├── ch_ppocr_mobile_v2.0_cls.onnx      # ~0.6 MB  方向分类
+  ├── ch_PP-OCRv5_rec_mobile.onnx        # ~10.9 MB 识别  (源 SWHL/RapidOCR PP-OCRv4 rec)
+  └── ppocr_keys_v1.txt                  # 字典 (PaddleOCR ppocr_keys_v1.txt 包装而成)
 ```
 
-容器内对应 volume 路径：`/root/.local/share/attune-docs/models/`（已在 compose 文件中挂载）。
+目录可经 `XDG_DATA_HOME` 覆盖；容器内对应 `/root/.local/share/attune-docs/models/`（compose 已挂载 volume）。
 
-首次启动会有几十秒的模型下载延迟。后续重启从 volume 缓存读取，无需重下。
+**⚠️ 字典格式硬约束（否则 OCR 输出乱码且置信度仍很高）**：`ppocr_keys_v1.txt` 必须是
+**无 BOM、LF 换行的 UTF-8**，内容为 `#\n` + 原始字典（每行一字）+ `\n ` 结尾（`#` 前缀行 + 末尾空格行
+是 kreuzberg CTC blank 约定）。用 PowerShell `Set-Content -Encoding utf8`（会写入 BOM）准备字典会
+导致整张索引→字符映射错位 —— 请用 `python` / `printf` 等不写 BOM 的方式生成。
+
+> v1.1 计划加入模型自动下载（带 S8 多源 failover），届时本节改为「首次启动自动下载」。
 
 ---
 

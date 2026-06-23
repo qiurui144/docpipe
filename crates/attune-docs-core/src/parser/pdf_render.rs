@@ -32,7 +32,9 @@ pub fn extract_text_layer(pdf_bytes: &[u8]) -> Result<Vec<PageText>> {
 
 /// 总页数（pdfium 动态绑定）。
 pub fn page_count(pdf_bytes: &[u8]) -> Result<u32> {
-    let pdfium = bind_pdfium()?;
+    let pdfium = pdfium()?
+        .lock()
+        .map_err(|_| DocError::Other("pdfium lock poisoned".into()))?;
     let doc = pdfium
         .load_pdf_from_byte_slice(pdf_bytes, None)
         .map_err(|e| DocError::Other(format!("pdfium load: {e}")))?;
@@ -42,7 +44,9 @@ pub fn page_count(pdf_bytes: &[u8]) -> Result<u32> {
 /// 渲染指定页为 PNG bytes。dpi 决定缩放（PDF 基准 72 点/英寸）。旋转由 pdfium 自动应用。
 pub fn render_page_png(pdf_bytes: &[u8], page_index: u32, dpi: u32) -> Result<Vec<u8>> {
     use pdfium_render::prelude::*;
-    let pdfium = bind_pdfium()?;
+    let pdfium = pdfium()?
+        .lock()
+        .map_err(|_| DocError::Other("pdfium lock poisoned".into()))?;
     let doc = pdfium
         .load_pdf_from_byte_slice(pdf_bytes, None)
         .map_err(|e| DocError::Other(format!("pdfium load: {e}")))?;
@@ -64,15 +68,35 @@ pub fn render_page_png(pdf_bytes: &[u8], page_index: u32, dpi: u32) -> Result<Ve
     Ok(png)
 }
 
-/// 绑定 PDFium 动态库。先找系统库；也接受 PDFIUM_DYNAMIC_LIB_PATH 环境变量指定的目录。
-fn bind_pdfium() -> Result<pdfium_render::prelude::Pdfium> {
+/// 进程级单次 PDFium 绑定。PDFium C 库是**全局单例**——`FPDF_InitLibrary` 每进程只能调用一次，
+/// 重复 `bind_*` 会报 `PdfiumLibraryBindingsAlreadyInitialized`。因此全进程只绑定一次并缓存；
+/// 又因 PDFium 非线程安全，用 `Mutex` 串行化所有 PDF 操作（page_count / render 共享同一实例）。
+/// 绑定失败时把错误字符串缓存，后续每次调用复用同一错误（避免反复重试 init）。
+fn pdfium() -> Result<&'static std::sync::Mutex<pdfium_render::prelude::Pdfium>> {
+    use std::sync::{Mutex, OnceLock};
+    static CELL: OnceLock<std::result::Result<Mutex<pdfium_render::prelude::Pdfium>, String>> =
+        OnceLock::new();
+    match CELL.get_or_init(|| bind_pdfium_once().map(Mutex::new).map_err(|e| e.to_string())) {
+        Ok(m) => Ok(m),
+        Err(s) => Err(DocError::Other(s.clone())),
+    }
+}
+
+/// 绑定 PDFium 动态库（仅由 `pdfium()` 调用一次）。先找系统库；也接受 PDFIUM_DYNAMIC_LIB_PATH。
+/// 该环境变量既可是**库文件完整路径**（如 `/usr/local/lib/libpdfium.so`，文档/Dockerfile 约定），
+/// 也可是**含库的目录**——指向已存在的文件时直接 `bind_to_library`，否则按目录用
+/// `pdfium_platform_library_name_at_path` 自动补全库文件名。两种写法都支持，消除歧义。
+fn bind_pdfium_once() -> Result<pdfium_render::prelude::Pdfium> {
     use pdfium_render::prelude::*;
     if let Some(path) = std::env::var_os("PDFIUM_DYNAMIC_LIB_PATH") {
-        // pdfium_platform_library_name_at_path 接受 &(impl AsRef<Path>)；OsString 满足。
         let path_str: String = path.to_string_lossy().into_owned();
-        let lib_name = Pdfium::pdfium_platform_library_name_at_path(path_str.as_str());
-        let bindings = Pdfium::bind_to_library(lib_name)
-            .map_err(|e| DocError::Other(format!("pdfium bind (path): {e}")))?;
+        // 指向已存在的文件 → 直接当库文件路径；否则当目录补全库文件名。两分支都调 bind_to_library。
+        let bindings = if std::path::Path::new(&path_str).is_file() {
+            Pdfium::bind_to_library(&path_str)
+        } else {
+            Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(path_str.as_str()))
+        }
+        .map_err(|e| DocError::Other(format!("pdfium bind ({path_str}): {e}")))?;
         Ok(Pdfium::new(bindings))
     } else {
         let bindings = Pdfium::bind_to_system_library().map_err(|e| {
