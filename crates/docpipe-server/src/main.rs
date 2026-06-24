@@ -2,6 +2,7 @@
 
 mod config;
 mod error;
+mod jobs;
 mod routes;
 mod state;
 
