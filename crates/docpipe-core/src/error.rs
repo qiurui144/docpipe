@@ -24,6 +24,10 @@ pub enum DocError {
     Io(#[from] std::io::Error),
     #[error("other: {0}")]
     Other(String),
+    #[error("document-not-found")]
+    DocumentNotFound,
+    #[error("job-not-found")]
+    JobNotFound,
 }
 
 pub type Result<T> = std::result::Result<T, DocError>;
@@ -42,6 +46,8 @@ impl DocError {
             DocError::LocatorDrift => "locator-drift",
             DocError::Io(_) => "io-error",
             DocError::Other(_) => "internal-error",
+            DocError::DocumentNotFound => "document-not-found",
+            DocError::JobNotFound => "job-not-found",
         }
     }
 
@@ -57,6 +63,8 @@ impl DocError {
             DocError::LocatorDrift => 422,
             DocError::Io(_) => 500,
             DocError::Other(_) => 500,
+            DocError::DocumentNotFound => 404,
+            DocError::JobNotFound => 404,
         }
     }
 }
@@ -95,5 +103,13 @@ mod tests {
         assert_eq!(DocError::ParseEmptyResult.http_status(), 422);
         assert_eq!(DocError::LocatorDrift.code(), "locator-drift");
         assert_eq!(DocError::LocatorDrift.http_status(), 422);
+    }
+
+    #[test]
+    fn v11_error_codes() {
+        assert_eq!(DocError::DocumentNotFound.code(), "document-not-found");
+        assert_eq!(DocError::DocumentNotFound.http_status(), 404);
+        assert_eq!(DocError::JobNotFound.code(), "job-not-found");
+        assert_eq!(DocError::JobNotFound.http_status(), 404);
     }
 }

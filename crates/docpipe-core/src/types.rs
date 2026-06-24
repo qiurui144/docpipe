@@ -126,6 +126,27 @@ pub struct AnnotatableItem {
     pub skill_metadata: Option<serde_json::Value>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DocumentInfo {
+    pub doc_id: String,
+    pub collection: String,
+    pub filename: Option<String>,
+    pub format: String,
+    pub page_count: u32,
+    pub chunk_count: u32,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct IngestResult {
+    pub doc_id: String,
+    pub collection: String,
+    pub chunk_count: usize,
+    pub chunk_ids: Vec<String>,
+    pub backend: OcrBackendKind,
+    pub ocr_used: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -179,5 +200,41 @@ mod tests {
         let j = serde_json::to_string(&doc).unwrap();
         let back: ParsedDocument = serde_json::from_str(&j).unwrap();
         assert_eq!(doc, back);
+    }
+}
+
+#[cfg(test)]
+mod v11_tests {
+    use super::*;
+
+    #[test]
+    fn document_info_roundtrips() {
+        let d = DocumentInfo {
+            doc_id: "d1".into(),
+            collection: "default".into(),
+            filename: Some("a.pdf".into()),
+            format: "pdf".into(),
+            page_count: 3,
+            chunk_count: 7,
+            created_at: "2026-06-24T00:00:00Z".into(),
+        };
+        let j = serde_json::to_string(&d).unwrap();
+        assert!(j.contains("\"doc_id\":\"d1\""));
+        assert_eq!(serde_json::from_str::<DocumentInfo>(&j).unwrap(), d);
+    }
+
+    #[test]
+    fn ingest_result_serializes_snake_case() {
+        let r = IngestResult {
+            doc_id: "d1".into(),
+            collection: "default".into(),
+            chunk_count: 2,
+            chunk_ids: vec!["d1:a".into(), "d1:b".into()],
+            backend: OcrBackendKind::TextLayer,
+            ocr_used: false,
+        };
+        let j = serde_json::to_string(&r).unwrap();
+        assert!(j.contains("\"chunk_count\":2"));
+        assert!(j.contains("\"backend\":\"text-layer\""));
     }
 }
