@@ -16,7 +16,7 @@ use sqlite_vec::sqlite3_vec_init;
 
 use super::VectorStore;
 use crate::error::{DocError, Result};
-use crate::types::{EmbeddedChunk, SearchResult};
+use crate::types::{DocumentInfo, EmbeddedChunk, SearchResult};
 
 /// 全局只注册一次 sqlite-vec 扩展。
 static REGISTER_ONCE: Once = Once::new();
@@ -78,8 +78,35 @@ impl SqliteVecStore {
             );",
         )
         .map_err(|e| DocError::VectorStoreError(format!("create chunk_meta: {e}")))?;
+        // 文档注册表：按 (doc_id, collection) 主键唯一
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS documents (
+                doc_id      TEXT NOT NULL,
+                collection  TEXT NOT NULL,
+                filename    TEXT,
+                format      TEXT NOT NULL,
+                page_count  INTEGER NOT NULL,
+                chunk_count INTEGER NOT NULL,
+                created_at  TEXT NOT NULL,
+                PRIMARY KEY (doc_id, collection)
+            )",
+            [],
+        )
+        .map_err(|e| DocError::VectorStoreError(format!("create documents table: {e}")))?;
         Ok(Self {
             conn: Mutex::new(conn),
+        })
+    }
+
+    fn row_to_doc(r: &rusqlite::Row) -> rusqlite::Result<DocumentInfo> {
+        Ok(DocumentInfo {
+            doc_id: r.get(0)?,
+            collection: r.get(1)?,
+            filename: r.get(2)?,
+            format: r.get(3)?,
+            page_count: r.get(4)?,
+            chunk_count: r.get(5)?,
+            created_at: r.get(6)?,
         })
     }
 
@@ -212,7 +239,7 @@ impl VectorStore for SqliteVecStore {
         Ok(out)
     }
 
-    /// 按 doc_id 前缀删除所有 chunk（chunk_id LIKE "{doc_id}:%"）。
+    /// 按 doc_id 前缀删除所有 chunk（chunk_id LIKE "{doc_id}:%"），并删除 documents 行。
     async fn delete(&self, doc_id: &str, collection: &str) -> Result<()> {
         let conn = self
             .conn
@@ -242,7 +269,86 @@ impl VectorStore for SqliteVecStore {
             )
             .map_err(|e| DocError::VectorStoreError(format!("delete meta row: {e}")))?;
         }
+
+        // 同时删除文档注册表中的行
+        conn.execute(
+            "DELETE FROM documents WHERE doc_id=?1 AND collection=?2",
+            rusqlite::params![doc_id, collection],
+        )
+        .map_err(|e| DocError::VectorStoreError(format!("delete document: {e}")))?;
+
         Ok(())
+    }
+
+    async fn register_document(&self, info: &DocumentInfo) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| DocError::VectorStoreError("lock".into()))?;
+        conn.execute(
+            "INSERT INTO documents (doc_id, collection, filename, format, page_count, chunk_count, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(doc_id, collection) DO UPDATE SET
+                filename=excluded.filename, format=excluded.format,
+                page_count=excluded.page_count, chunk_count=excluded.chunk_count,
+                created_at=excluded.created_at",
+            rusqlite::params![
+                info.doc_id,
+                info.collection,
+                info.filename,
+                info.format,
+                info.page_count,
+                info.chunk_count,
+                info.created_at
+            ],
+        )
+        .map_err(|e| DocError::VectorStoreError(format!("register_document: {e}")))?;
+        Ok(())
+    }
+
+    async fn list_documents(&self, collection: &str) -> Result<Vec<DocumentInfo>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| DocError::VectorStoreError("lock".into()))?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT doc_id, collection, filename, format, page_count, chunk_count, created_at
+                 FROM documents WHERE collection=?1 ORDER BY created_at DESC",
+            )
+            .map_err(|e| DocError::VectorStoreError(format!("list prep: {e}")))?;
+        let rows = stmt
+            .query_map([collection], Self::row_to_doc)
+            .map_err(|e| DocError::VectorStoreError(format!("list query: {e}")))?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r.map_err(|e| DocError::VectorStoreError(format!("list row: {e}")))?);
+        }
+        Ok(out)
+    }
+
+    async fn get_document(&self, doc_id: &str, collection: &str) -> Result<Option<DocumentInfo>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| DocError::VectorStoreError("lock".into()))?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT doc_id, collection, filename, format, page_count, chunk_count, created_at
+                 FROM documents WHERE doc_id=?1 AND collection=?2",
+            )
+            .map_err(|e| DocError::VectorStoreError(format!("get prep: {e}")))?;
+        let mut rows = stmt
+            .query_map(rusqlite::params![doc_id, collection], Self::row_to_doc)
+            .map_err(|e| DocError::VectorStoreError(format!("get query: {e}")))?;
+        match rows.next() {
+            Some(r) => {
+                Ok(Some(r.map_err(|e| {
+                    DocError::VectorStoreError(format!("get row: {e}"))
+                })?))
+            }
+            None => Ok(None),
+        }
     }
 }
 
@@ -250,7 +356,7 @@ impl VectorStore for SqliteVecStore {
 mod tests {
     use super::*;
     use crate::store::VectorStore;
-    use crate::types::{Chunk, EmbeddedChunk};
+    use crate::types::{Chunk, DocumentInfo, EmbeddedChunk};
 
     fn mk_chunk(id: &str, vec: Vec<f32>) -> EmbeddedChunk {
         EmbeddedChunk {
@@ -298,6 +404,49 @@ mod tests {
         store.delete("doc1", "default").await.unwrap();
         let results = store.search(&[1.0, 0.0, 0.0], "default", 5).await.unwrap();
         assert!(results.iter().all(|r| !r.chunk_id.starts_with("doc1:")));
+    }
+
+    fn mk_doc(id: &str) -> DocumentInfo {
+        DocumentInfo {
+            doc_id: id.into(),
+            collection: "default".into(),
+            filename: Some(format!("{id}.pdf")),
+            format: "pdf".into(),
+            page_count: 2,
+            chunk_count: 3,
+            created_at: "2026-06-24T00:00:00Z".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn document_register_list_get_delete() {
+        let store = SqliteVecStore::in_memory().unwrap();
+        store.register_document(&mk_doc("doc1")).await.unwrap();
+        store.register_document(&mk_doc("doc2")).await.unwrap();
+        let docs = store.list_documents("default").await.unwrap();
+        assert_eq!(docs.len(), 2);
+        let one = store.get_document("doc1", "default").await.unwrap();
+        assert_eq!(one.unwrap().filename.as_deref(), Some("doc1.pdf"));
+        // delete removes the documents row too
+        store.delete("doc1", "default").await.unwrap();
+        assert!(store
+            .get_document("doc1", "default")
+            .await
+            .unwrap()
+            .is_none());
+        assert_eq!(store.list_documents("default").await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn register_is_idempotent_upsert() {
+        let store = SqliteVecStore::in_memory().unwrap();
+        store.register_document(&mk_doc("doc1")).await.unwrap();
+        let mut d = mk_doc("doc1");
+        d.chunk_count = 99;
+        store.register_document(&d).await.unwrap();
+        let docs = store.list_documents("default").await.unwrap();
+        assert_eq!(docs.len(), 1);
+        assert_eq!(docs[0].chunk_count, 99);
     }
 
     #[tokio::test]
