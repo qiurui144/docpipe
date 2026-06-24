@@ -11,6 +11,8 @@ pub struct AppState {
     pub sdk: Docpipe,
     pub ram_tier: String,
     pub mineru_configured: bool,
+    pub jobs: crate::jobs::JobQueue,
+    pub max_upload_bytes: usize,
 }
 
 impl AppState {
@@ -38,10 +40,13 @@ impl AppState {
         } else {
             "lite".to_string()
         };
+        let jobs = crate::jobs::JobQueue::new(cfg.max_ocr_concurrency);
         Ok(Self {
             sdk,
             ram_tier,
             mineru_configured,
+            jobs,
+            max_upload_bytes: cfg.max_upload_bytes,
         })
     }
 
@@ -96,6 +101,8 @@ impl AppState {
             sdk,
             ram_tier: "lite".into(),
             mineru_configured: false,
+            jobs: crate::jobs::JobQueue::new(2),
+            max_upload_bytes: 500 * 1024 * 1024,
         }
     }
 }

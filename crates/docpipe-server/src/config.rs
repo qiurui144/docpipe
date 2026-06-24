@@ -9,6 +9,7 @@ pub struct Config {
     pub mineru_url: Option<String>,
     #[allow(dead_code)] // 保留供将来 OCR 并发控制使用（spec §8 MAX_OCR_CONCURRENCY）
     pub max_ocr_concurrency: usize,
+    pub max_upload_bytes: usize,
 }
 
 impl Config {
@@ -24,6 +25,10 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(2),
+            max_upload_bytes: std::env::var("MAX_UPLOAD_BYTES")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(500 * 1024 * 1024),
         }
     }
 }

@@ -5,6 +5,7 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use docpipe_core::error::DocError;
 
+#[derive(Debug)]
 pub struct ApiError(pub DocError);
 
 impl From<DocError> for ApiError {

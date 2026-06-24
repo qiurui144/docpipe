@@ -1,8 +1,6 @@
 //! 极简进程内异步任务队列 —— 内存注册表 + tokio Semaphore 限并发。
 //! 无 Redis/心跳/TTL；job 重启即失（v1.1 ephemeral，spec §11）。
 
-#![allow(dead_code)]
-
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::{Arc, Mutex};
