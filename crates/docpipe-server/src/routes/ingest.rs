@@ -80,9 +80,9 @@ pub async fn ingest(
     let created_at = chrono::Utc::now().to_rfc3339();
     let collection = cfg.collection.clone();
     if cfg.r#async {
-        // state は Arc<AppState> (Clone) —— async move で所有権を移す
+        // state 是 Arc<AppState>（Clone）—— async move 把所有权移入 spawned future，满足 Send+'static
         let state2 = state.clone();
-        let fname = filename.clone();
+        let fname = filename;
         let ca = created_at.clone();
         let job_id = state.jobs.submit(
             async move {
@@ -108,6 +108,8 @@ pub async fn ingest(
                 &created_at,
             )
             .await?;
-        Ok((StatusCode::OK, Json(serde_json::to_value(r).unwrap())))
+        let val = serde_json::to_value(r)
+            .map_err(|e| ApiError(DocError::Other(format!("serialize ingest result: {e}"))))?;
+        Ok((StatusCode::OK, Json(val)))
     }
 }
