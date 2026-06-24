@@ -122,10 +122,16 @@ impl Docpipe {
         }
     }
 
-    /// 幂等 ingest：先删旧 doc 的所有 chunk，再分块 → 向量化 → upsert。
-    /// chunk_id 格式："{doc_id}:{uuid}"。返回已写入的 chunk_id 列表。
-    pub async fn ingest(&self, parsed: &ParsedDocument, collection: &str) -> Result<Vec<String>> {
-        // 幂等：先删旧 doc 向量。
+    /// 幂等 ingest：先删旧 doc 的所有 chunk，再分块 → 向量化 → upsert → 登记 documents 行。
+    /// chunk_id 格式："{doc_id}:{uuid}"。返回 IngestResult（含 chunk_ids + 文档元数据）。
+    pub async fn ingest(
+        &self,
+        parsed: &ParsedDocument,
+        collection: &str,
+        filename: Option<&str>,
+        created_at: &str,
+    ) -> Result<crate::types::IngestResult> {
+        // 幂等：先删旧 doc 向量（同时删 documents 行）。
         self.store.delete(&parsed.doc_id, collection).await?;
 
         let cfg = ChunkConfig::default();
@@ -161,7 +167,63 @@ impl Docpipe {
 
         let ids: Vec<String> = embedded.iter().map(|e| e.chunk.chunk_id.clone()).collect();
         self.store.upsert(&embedded, collection).await?;
-        Ok(ids)
+        // 向量写成功后再登记文档行（不留悬空 documents 行）。
+        // 若 register_document 失败，补偿性删除本次写入的向量，保持一致性（spec §11）。
+        let info = crate::types::DocumentInfo {
+            doc_id: parsed.doc_id.clone(),
+            collection: collection.to_string(),
+            filename: filename.map(|s| s.to_string()),
+            format: format!("{:?}", parsed.format).to_lowercase(),
+            page_count: parsed.page_count,
+            chunk_count: ids.len() as u32,
+            created_at: created_at.to_string(),
+        };
+        if let Err(e) = self.store.register_document(&info).await {
+            // 尽力回滚向量写入；回滚失败记录但不覆盖原始错误。
+            let _ = self.store.delete(&parsed.doc_id, collection).await;
+            return Err(e);
+        }
+        Ok(crate::types::IngestResult {
+            doc_id: parsed.doc_id.clone(),
+            collection: collection.to_string(),
+            chunk_count: ids.len(),
+            chunk_ids: ids,
+            backend: parsed.backend.clone(),
+            ocr_used: parsed.ocr_used,
+        })
+    }
+
+    /// 一步摄入：parse → ingest（分块+向量化+存储+登记）。
+    pub async fn ingest_file(
+        &self,
+        bytes: &[u8],
+        filename: Option<&str>,
+        config: ParseConfig,
+        collection: &str,
+        created_at: &str,
+    ) -> Result<crate::types::IngestResult> {
+        let parsed = self.parse(bytes, config).await?;
+        self.ingest(&parsed, collection, filename, created_at).await
+    }
+
+    pub async fn list_documents(
+        &self,
+        collection: &str,
+    ) -> Result<Vec<crate::types::DocumentInfo>> {
+        self.store.list_documents(collection).await
+    }
+
+    pub async fn get_document(
+        &self,
+        doc_id: &str,
+        collection: &str,
+    ) -> Result<Option<crate::types::DocumentInfo>> {
+        self.store.get_document(doc_id, collection).await
+    }
+
+    /// 删除文档 + 其所有向量（store.delete 已同时删 documents 行）。
+    pub async fn delete_document(&self, doc_id: &str, collection: &str) -> Result<()> {
+        self.store.delete(doc_id, collection).await
     }
 
     /// 向量搜索：embed query 后在 store 中 KNN 检索。
@@ -263,9 +325,13 @@ mod tests {
             }],
             warnings: vec![],
         };
-        let ids = sdk.ingest(&parsed, "default").await.unwrap();
-        assert!(!ids.is_empty());
-        assert!(ids.iter().all(|id| id.starts_with("docX:")));
+        let result = sdk
+            .ingest(&parsed, "default", None, "2026-06-24T00:00:00Z")
+            .await
+            .unwrap();
+        assert!(!result.chunk_ids.is_empty());
+        assert!(result.chunk_ids.iter().all(|id| id.starts_with("docX:")));
+        assert_eq!(result.chunk_ids.len(), result.chunk_count);
         let results = sdk
             .search("一个比较长的句子内容内容内容内容。", "default", 1)
             .await
@@ -297,13 +363,44 @@ mod tests {
             }],
             warnings: vec![],
         };
-        sdk.ingest(&parsed, "default").await.unwrap();
-        sdk.ingest(&parsed, "default").await.unwrap();
+        sdk.ingest(&parsed, "default", None, "2026-06-24T00:00:00Z")
+            .await
+            .unwrap();
+        sdk.ingest(&parsed, "default", None, "2026-06-24T00:00:00Z")
+            .await
+            .unwrap();
         let results = sdk.search("唯一句子内容。", "default", 10).await.unwrap();
         let from_docy = results
             .iter()
             .filter(|r| r.chunk_id.starts_with("docY:"))
             .count();
         assert_eq!(from_docy, 1);
+    }
+
+    #[tokio::test]
+    async fn ingest_file_registers_document_and_returns_result() {
+        let sdk = build_sdk();
+        let html = b"<html><body>\xE5\x90\x88\xE5\x90\x8C\xE5\xAE\xA1\xE6\x9F\xA5\xE3\x80\x82</body></html>";
+        let r = sdk
+            .ingest_file(
+                html,
+                Some("c.html"),
+                ParseConfig::default(),
+                "default",
+                "2026-06-24T00:00:00Z",
+            )
+            .await
+            .unwrap();
+        assert_eq!(r.collection, "default");
+        assert!(r.chunk_count >= 1);
+        assert_eq!(r.chunk_ids.len(), r.chunk_count);
+        let docs = sdk.list_documents("default").await.unwrap();
+        assert_eq!(docs.len(), 1);
+        assert_eq!(docs[0].filename.as_deref(), Some("c.html"));
+        assert_eq!(docs[0].doc_id, r.doc_id);
+        let got = sdk.get_document(&r.doc_id, "default").await.unwrap();
+        assert!(got.is_some());
+        sdk.delete_document(&r.doc_id, "default").await.unwrap();
+        assert!(sdk.list_documents("default").await.unwrap().is_empty());
     }
 }
