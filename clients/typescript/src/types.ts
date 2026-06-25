@@ -22,3 +22,5 @@ export interface Job {
   job_id: string; status: "queued" | "running" | "done" | "failed"; created_at: string;
   result?: IngestResult | null; error?: string | null;
 }
+export interface PiiEntity { kind: string; text: string; start: number; end: number; confidence: number; source: string; page_num?: number | null; }
+export interface PiiResult { entities: PiiEntity[]; redacted_text?: string | null; mapping?: Record<string, string> | null; annotations?: unknown[] | null; warnings: string[]; }

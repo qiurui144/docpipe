@@ -76,6 +76,19 @@ describe("DocpipeClient", () => {
     expect((init as RequestInit).body).toBeInstanceOf(FormData);
   });
 
+  it("detectPii sends snake_case doc_id and returns entities", async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ entities: [{ kind: "email", text: "a@b.co", start: 0, end: 6, confidence: 1, source: "regex" }], warnings: [] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const c = new DocpipeClient("http://docs");
+    const res = await c.detectPii({ docId: "d1" });
+    expect(res.entities[0].kind).toBe("email");
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.doc_id).toBe("d1");
+    expect(body.docId).toBeUndefined();
+  });
+
   it("documents and jobs use expected paths", async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (url.includes("/v1/documents/d1") && init?.method === "DELETE") {

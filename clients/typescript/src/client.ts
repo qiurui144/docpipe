@@ -4,6 +4,7 @@ import type {
   IngestResult,
   Job,
   ParsedDocument,
+  PiiResult,
   SearchResult,
 } from "./types.js";
 
@@ -115,6 +116,15 @@ export class DocpipeClient {
       method: "DELETE",
     });
     return this.handle(r) as Promise<{ deleted: boolean; doc_id: string }>;
+  }
+
+  async detectPii(req: { text?: string; docId?: string; collection?: string; types?: string[]; redact?: boolean; annotate?: boolean }): Promise<PiiResult> {
+    const body: Record<string, unknown> = { collection: req.collection ?? "default", redact: req.redact ?? false, annotate: req.annotate ?? false };
+    if (req.text !== undefined) body.text = req.text;
+    if (req.docId !== undefined) body.doc_id = req.docId;
+    if (req.types !== undefined) body.types = req.types;
+    const r = await fetch(`${this.baseUrl}/v1/detect-pii`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    return this.handle(r) as Promise<PiiResult>;
   }
 
   async getJob(jobId: string): Promise<Job> {
