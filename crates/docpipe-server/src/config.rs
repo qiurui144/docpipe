@@ -21,7 +21,9 @@ impl Config {
                 .unwrap_or_else(|_| "http://localhost:11434".into()),
             embed_model: std::env::var("EMBED_MODEL").unwrap_or_else(|_| "bge-m3".into()),
             sqlite_path: env_first(&["SQLITE_PATH"])
-                .or_else(|| database_url_to_sqlite_path(std::env::var("DATABASE_URL").ok()?.as_str()))
+                .or_else(|| {
+                    database_url_to_sqlite_path(std::env::var("DATABASE_URL").ok()?.as_str())
+                })
                 .unwrap_or_else(|| "./docpipe.db".into()),
             mineru_url: std::env::var("MINERU_URL").ok(),
             max_ocr_concurrency: std::env::var("MAX_OCR_CONCURRENCY")

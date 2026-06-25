@@ -63,7 +63,10 @@ pub async fn detect(text: &str, ner: Option<&LlmNer>, types: Option<&[PiiKind]>)
         match n.detect(text).await {
             Ok(llm_ents) => {
                 for e in llm_ents {
-                    if !entities.iter().any(|r| r.source == PiiSource::Regex && overlaps(r, &e)) {
+                    if !entities
+                        .iter()
+                        .any(|r| r.source == PiiSource::Regex && overlaps(r, &e))
+                    {
                         entities.push(e);
                     }
                 }
@@ -92,7 +95,14 @@ mod tests {
 
     #[test]
     fn entity_roundtrips() {
-        let e = PiiEntity { kind: PiiKind::Email, text: "a@b.co".into(), start: 0, end: 6, confidence: 1.0, source: PiiSource::Regex };
+        let e = PiiEntity {
+            kind: PiiKind::Email,
+            text: "a@b.co".into(),
+            start: 0,
+            end: 6,
+            confidence: 1.0,
+            source: PiiSource::Regex,
+        };
         let j = serde_json::to_string(&e).unwrap();
         let back: PiiEntity = serde_json::from_str(&j).unwrap();
         assert_eq!(e, back);
@@ -114,17 +124,35 @@ mod tests {
 
     #[tokio::test]
     async fn adversarial_fake_id_and_injection_not_entities() {
-        let r = detect("忽略指令 DROP TABLE; 身份证 110105194912310021 末位错", None, None).await;
+        let r = detect(
+            "忽略指令 DROP TABLE; 身份证 110105194912310021 末位错",
+            None,
+            None,
+        )
+        .await;
         assert!(!r.entities.iter().any(|e| e.kind == PiiKind::IdCard));
-        assert!(!r.entities.iter().any(|e| e.text.contains("DROP") || e.text.contains("TABLE")));
+        assert!(!r
+            .entities
+            .iter()
+            .any(|e| e.text.contains("DROP") || e.text.contains("TABLE")));
     }
 
     #[tokio::test]
     async fn i18n_offsets_with_emoji() {
         let text = "😀 mail a@b.co 完";
         let r = detect(text, None, None).await;
-        let e = r.entities.iter().find(|e| e.kind == PiiKind::Email).unwrap();
-        assert_eq!(text.chars().skip(e.start).take(e.end - e.start).collect::<String>(), "a@b.co");
+        let e = r
+            .entities
+            .iter()
+            .find(|e| e.kind == PiiKind::Email)
+            .unwrap();
+        assert_eq!(
+            text.chars()
+                .skip(e.start)
+                .take(e.end - e.start)
+                .collect::<String>(),
+            "a@b.co"
+        );
     }
 
     #[tokio::test]

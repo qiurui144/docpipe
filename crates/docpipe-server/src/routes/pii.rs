@@ -30,8 +30,7 @@ fn default_collection() -> String {
 fn parse_kinds(v: &[String]) -> Result<Vec<PiiKind>, String> {
     v.iter()
         .map(|s| {
-            serde_json::from_value(serde_json::Value::String(s.clone()))
-                .map_err(|_| s.clone())
+            serde_json::from_value(serde_json::Value::String(s.clone())).map_err(|_| s.clone())
         })
         .collect()
 }
@@ -63,8 +62,7 @@ pub async fn detect_pii(
             if req.annotate {
                 warnings.push("annotate requires doc_id".to_string());
             }
-            let mut body =
-                serde_json::json!({ "entities": res.entities, "warnings": warnings });
+            let mut body = serde_json::json!({ "entities": res.entities, "warnings": warnings });
             if req.redact {
                 let (red, map) = pii::redact_text(text, &res.entities);
                 body["redacted_text"] = serde_json::json!(red);
@@ -78,16 +76,15 @@ pub async fn detect_pii(
             let collection = &req.collection;
 
             // 获取 chunk 定位符；空 vec = 文档不存在。
-            let locators =
-                match state.sdk.document_locators(doc_id, collection).await {
-                    Ok(locs) => locs,
-                    Err(e) => {
-                        return (
-                            StatusCode::from_u16(e.http_status()).unwrap(),
-                            Json(serde_json::json!({"error": e.code()})),
-                        )
-                    }
-                };
+            let locators = match state.sdk.document_locators(doc_id, collection).await {
+                Ok(locs) => locs,
+                Err(e) => {
+                    return (
+                        StatusCode::from_u16(e.http_status()).unwrap(),
+                        Json(serde_json::json!({"error": e.code()})),
+                    )
+                }
+            };
 
             if locators.is_empty() {
                 return (
@@ -104,9 +101,7 @@ pub async fn detect_pii(
                 std::collections::BTreeSet::new();
 
             for loc in &locators {
-                let res =
-                    pii::detect(&loc.text, state.ner.as_ref(), kinds.as_deref())
-                        .await;
+                let res = pii::detect(&loc.text, state.ner.as_ref(), kinds.as_deref()).await;
                 for w in &res.warnings {
                     warnings_set.insert(w.clone());
                 }
@@ -128,7 +123,12 @@ pub async fn detect_pii(
                         .as_str()
                         .unwrap_or("unknown")
                         .to_string();
-                    let key = (loc.page_num, page_local_start, page_local_end, kind_str.clone());
+                    let key = (
+                        loc.page_num,
+                        page_local_start,
+                        page_local_end,
+                        kind_str.clone(),
+                    );
                     if !seen_keys.insert(key) {
                         // 重叠区域重复实体，跳过。
                         continue;
@@ -153,19 +153,17 @@ pub async fn detect_pii(
 
             // redact=true：对拼接文本做平铺检测+脱敏（独立于 page-aware 实体）。
             if req.redact {
-                let joined_text =
-                    match state.sdk.document_text(doc_id, collection).await {
-                        Ok(t) => t,
-                        Err(e) => {
-                            return (
-                                StatusCode::from_u16(e.http_status()).unwrap(),
-                                Json(serde_json::json!({"error": e.code()})),
-                            )
-                        }
-                    };
+                let joined_text = match state.sdk.document_text(doc_id, collection).await {
+                    Ok(t) => t,
+                    Err(e) => {
+                        return (
+                            StatusCode::from_u16(e.http_status()).unwrap(),
+                            Json(serde_json::json!({"error": e.code()})),
+                        )
+                    }
+                };
                 let flat_res =
-                    pii::detect(&joined_text, state.ner.as_ref(), kinds.as_deref())
-                        .await;
+                    pii::detect(&joined_text, state.ner.as_ref(), kinds.as_deref()).await;
                 let (red, map) = pii::redact_text(&joined_text, &flat_res.entities);
                 body["redacted_text"] = serde_json::json!(red);
                 body["mapping"] = serde_json::json!(map);
@@ -186,12 +184,17 @@ pub async fn detect_pii(
                             .as_str()
                             .unwrap_or("unknown")
                             .to_string();
-                        let key = (loc.page_num, page_local_start, page_local_end, kind_str.clone());
+                        let key = (
+                            loc.page_num,
+                            page_local_start,
+                            page_local_end,
+                            kind_str.clone(),
+                        );
                         if !ann_seen.insert(key) {
                             continue;
                         }
-                        let page_local_offset = loc.char_offset
-                            + u32::try_from(ent.start).unwrap_or(u32::MAX);
+                        let page_local_offset =
+                            loc.char_offset + u32::try_from(ent.start).unwrap_or(u32::MAX);
                         let item = state.sdk.annotate(AnnotateRequest {
                             doc_id: doc_id.clone(),
                             original_text: ent.text.clone(),
@@ -204,8 +207,7 @@ pub async fn detect_pii(
                             source: AnnotationSource::Ai,
                             skill_metadata: None,
                         });
-                        annotations
-                            .push(serde_json::json!({ "item_id": item.item_id }));
+                        annotations.push(serde_json::json!({ "item_id": item.item_id }));
                     }
                 }
                 body["annotations"] = serde_json::json!(annotations);
@@ -327,8 +329,7 @@ mod tests {
         }))
         .unwrap();
         let (status, body) =
-            detect_pii(axum::extract::State(state.clone()), axum::Json(req_body))
-                .await;
+            detect_pii(axum::extract::State(state.clone()), axum::Json(req_body)).await;
 
         assert_eq!(status, StatusCode::OK, "expected 200, got body: {}", body.0);
 
@@ -376,9 +377,7 @@ mod tests {
         // 即使 chunk 边界未精确命中重叠区，通用不变式（无重复四元组）同样有效。
         let filler_a = "甲 ".repeat(120); // ~240 字节 UTF-8
         let filler_b = "乙 ".repeat(120);
-        let body_text = format!(
-            "{filler_a}联系 dup@b.co 获取支持。{filler_b}"
-        );
+        let body_text = format!("{filler_a}联系 dup@b.co 获取支持。{filler_b}");
         let html = format!("<html><body>{body_text}</body></html>");
 
         let r = state
@@ -400,8 +399,7 @@ mod tests {
         }))
         .unwrap();
         let (status, body) =
-            detect_pii(axum::extract::State(state.clone()), axum::Json(req_body))
-                .await;
+            detect_pii(axum::extract::State(state.clone()), axum::Json(req_body)).await;
 
         assert_eq!(status, StatusCode::OK, "expected 200, body: {}", body.0);
 
@@ -422,7 +420,10 @@ mod tests {
             assert!(
                 seen.insert(key.clone()),
                 "duplicate entity (page_num={}, start={}, end={}, kind={}) in response",
-                key.0, key.1, key.2, key.3
+                key.0,
+                key.1,
+                key.2,
+                key.3
             );
         }
 
@@ -450,17 +451,17 @@ mod tests {
         }))
         .unwrap();
         let (status, body) =
-            detect_pii(axum::extract::State(state.clone()), axum::Json(req_body))
-                .await;
+            detect_pii(axum::extract::State(state.clone()), axum::Json(req_body)).await;
 
         assert_eq!(status, StatusCode::OK, "expected 200, body: {}", body.0);
         let warnings = body.0["warnings"]
             .as_array()
             .expect("warnings must be array");
         assert!(
-            warnings
-                .iter()
-                .any(|w| w.as_str().unwrap_or("").contains("annotate requires doc_id")),
+            warnings.iter().any(|w| w
+                .as_str()
+                .unwrap_or("")
+                .contains("annotate requires doc_id")),
             "expected warning about annotate requires doc_id, got: {}",
             body.0
         );

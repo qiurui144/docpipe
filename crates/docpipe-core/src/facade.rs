@@ -428,7 +428,11 @@ mod tests {
         assert!(!locs.is_empty());
         assert!(locs.iter().all(|l| l.page_num == 1));
         assert!(locs.iter().any(|l| l.text.contains("a@b.co")));
-        assert!(sdk.document_locators("missing", "default").await.unwrap().is_empty());
+        assert!(sdk
+            .document_locators("missing", "default")
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     #[tokio::test]

@@ -1,6 +1,6 @@
 //! 区间脱敏：按 char 偏移从后往前替换，产出可逆 mapping。
-use std::collections::BTreeMap;
 use super::{PiiEntity, PiiKind};
+use std::collections::BTreeMap;
 
 pub fn redact_text(text: &str, entities: &[PiiEntity]) -> (String, BTreeMap<String, String>) {
     let mut ents: Vec<&PiiEntity> = entities.iter().collect();
@@ -24,9 +24,15 @@ pub fn redact_text(text: &str, entities: &[PiiEntity]) -> (String, BTreeMap<Stri
 
 fn kind_tag(k: PiiKind) -> &'static str {
     match k {
-        PiiKind::IdCard => "ID_CARD", PiiKind::Phone => "PHONE", PiiKind::Email => "EMAIL",
-        PiiKind::BankCard => "BANK_CARD", PiiKind::Plate => "PLATE", PiiKind::Ipv4 => "IPV4",
-        PiiKind::Person => "PERSON", PiiKind::Address => "ADDRESS", PiiKind::Org => "ORG",
+        PiiKind::IdCard => "ID_CARD",
+        PiiKind::Phone => "PHONE",
+        PiiKind::Email => "EMAIL",
+        PiiKind::BankCard => "BANK_CARD",
+        PiiKind::Plate => "PLATE",
+        PiiKind::Ipv4 => "IPV4",
+        PiiKind::Person => "PERSON",
+        PiiKind::Address => "ADDRESS",
+        PiiKind::Org => "ORG",
     }
 }
 
@@ -36,13 +42,23 @@ mod tests {
     use crate::pii::PiiSource;
 
     fn ent(kind: PiiKind, t: &str, s: usize, e: usize) -> super::PiiEntity {
-        PiiEntity { kind, text: t.into(), start: s, end: e, confidence: 1.0, source: PiiSource::Regex }
+        PiiEntity {
+            kind,
+            text: t.into(),
+            start: s,
+            end: e,
+            confidence: 1.0,
+            source: PiiSource::Regex,
+        }
     }
     #[test]
     fn redacts_back_to_front_and_is_reversible() {
         let text = "甲 a@b.co 乙 13800138000";
         // a@b.co at chars [2,8), phone at chars [11,22)
-        let ents = vec![ent(PiiKind::Email,"a@b.co",2,8), ent(PiiKind::Phone,"13800138000",11,22)];
+        let ents = vec![
+            ent(PiiKind::Email, "a@b.co", 2, 8),
+            ent(PiiKind::Phone, "13800138000", 11, 22),
+        ];
         let (red, map) = redact_text(text, &ents);
         assert!(red.contains("[EMAIL_1]") && red.contains("[PHONE_2]"));
         assert!(!red.contains("a@b.co") && !red.contains("13800138000"));
@@ -51,6 +67,7 @@ mod tests {
     #[test]
     fn empty_entities_returns_text_unchanged() {
         let (red, map) = redact_text("hello", &[]);
-        assert_eq!(red, "hello"); assert!(map.is_empty());
+        assert_eq!(red, "hello");
+        assert!(map.is_empty());
     }
 }

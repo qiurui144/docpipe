@@ -24,9 +24,5 @@ pub trait VectorStore: Send + Sync {
     /// 按插入顺序返回该文档所有 chunk 的文本（chunk_id LIKE "{doc_id}:%"）。
     async fn chunks_for_document(&self, doc_id: &str, collection: &str) -> Result<Vec<String>>;
     /// 返回文档所有 chunk 的页码 + 页内字符偏移量（按存储顺序）。
-    async fn document_locators(
-        &self,
-        doc_id: &str,
-        collection: &str,
-    ) -> Result<Vec<ChunkLocator>>;
+    async fn document_locators(&self, doc_id: &str, collection: &str) -> Result<Vec<ChunkLocator>>;
 }

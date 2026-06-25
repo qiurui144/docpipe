@@ -363,7 +363,10 @@ impl VectorStore for SqliteVecStore {
             .conn
             .lock()
             .map_err(|_| DocError::VectorStoreError("lock".into()))?;
-        let escaped = doc_id.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+        let escaped = doc_id
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
         let prefix = format!("{escaped}:%");
         let mut stmt = conn
             .prepare(
@@ -377,25 +380,24 @@ impl VectorStore for SqliteVecStore {
             .map_err(|e| DocError::VectorStoreError(format!("chunks_for_document query: {e}")))?;
         let mut out = Vec::new();
         for row in rows {
-            out.push(
-                row.map_err(|e| DocError::VectorStoreError(format!("chunks_for_document row: {e}")))?,
-            );
+            out.push(row.map_err(|e| {
+                DocError::VectorStoreError(format!("chunks_for_document row: {e}"))
+            })?);
         }
         Ok(out)
     }
 
     /// 返回文档所有 chunk 的 (page_num, char_offset, text) 三元组（按存储顺序）。
     /// page_num 取 page_refs JSON 数组第一个元素，若为空则为 0。
-    async fn document_locators(
-        &self,
-        doc_id: &str,
-        collection: &str,
-    ) -> Result<Vec<ChunkLocator>> {
+    async fn document_locators(&self, doc_id: &str, collection: &str) -> Result<Vec<ChunkLocator>> {
         let conn = self
             .conn
             .lock()
             .map_err(|_| DocError::VectorStoreError("lock".into()))?;
-        let escaped = doc_id.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+        let escaped = doc_id
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
         let prefix = format!("{escaped}:%");
         let mut stmt = conn
             .prepare(
@@ -411,9 +413,7 @@ impl VectorStore for SqliteVecStore {
                 let char_offset: u32 = r.get(2)?;
                 Ok((text, page_refs_json, char_offset))
             })
-            .map_err(|e| {
-                DocError::VectorStoreError(format!("document_locators query: {e}"))
-            })?;
+            .map_err(|e| DocError::VectorStoreError(format!("document_locators query: {e}")))?;
         let mut out = Vec::new();
         for row in rows {
             let (text, page_refs_json, char_offset) =
