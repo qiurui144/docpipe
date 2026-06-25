@@ -5,7 +5,7 @@ members = ["crates/docpipe-core", "crates/docpipe-server"]
 [workspace.package]
 edition = "2021"
 rust-version = "1.85"
-version = "0.1.0"
+version = "1.0.0"
 authors = ["qiurui144"]
 license = "Apache-2.0"
 
