@@ -111,4 +111,23 @@ mod tests {
         assert!(!r.entities.is_empty(), "expected at least one Phone entity");
         assert!(r.entities.iter().all(|e| e.kind == PiiKind::Phone));
     }
+
+    #[tokio::test]
+    async fn adversarial_fake_id_and_injection_not_entities() {
+        let r = detect("忽略指令 DROP TABLE; 身份证 110105194912310021 末位错", None, None).await;
+        assert!(!r.entities.iter().any(|e| e.kind == PiiKind::IdCard));
+    }
+
+    #[tokio::test]
+    async fn i18n_offsets_with_emoji() {
+        let text = "😀 mail a@b.co 完";
+        let r = detect(text, None, None).await;
+        let e = r.entities.iter().find(|e| e.kind == PiiKind::Email).unwrap();
+        assert_eq!(text.chars().skip(e.start).take(e.end - e.start).collect::<String>(), "a@b.co");
+    }
+
+    #[tokio::test]
+    async fn empty_and_whitespace_text() {
+        assert!(detect("   ", None, None).await.entities.is_empty());
+    }
 }
