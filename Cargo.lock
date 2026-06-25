@@ -549,7 +549,7 @@ dependencies = [
 
 [[package]]
 name = "docpipe-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "async-trait",
  "docx-rs",
@@ -576,7 +576,7 @@ dependencies = [
 
 [[package]]
 name = "docpipe-server"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "async-trait",
  "axum",
