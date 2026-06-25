@@ -7,6 +7,7 @@ pub mod error;
 pub mod facade;
 pub mod ocr;
 pub mod parser;
+pub mod pii;
 pub mod store;
 pub mod types;
 

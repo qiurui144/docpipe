@@ -28,6 +28,8 @@ pub enum DocError {
     DocumentNotFound,
     #[error("job-not-found")]
     JobNotFound,
+    #[error("bad-request: {0}")]
+    BadRequest(String),
 }
 
 pub type Result<T> = std::result::Result<T, DocError>;
@@ -48,6 +50,7 @@ impl DocError {
             DocError::Other(_) => "internal-error",
             DocError::DocumentNotFound => "document-not-found",
             DocError::JobNotFound => "job-not-found",
+            DocError::BadRequest(_) => "bad-request",
         }
     }
 
@@ -65,6 +68,7 @@ impl DocError {
             DocError::Other(_) => 500,
             DocError::DocumentNotFound => 404,
             DocError::JobNotFound => 404,
+            DocError::BadRequest(_) => 400,
         }
     }
 }
