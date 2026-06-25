@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 import httpx
 
-from .models import DocumentInfo, IngestResult, Job, ParsedDocument
+from .models import DocumentInfo, IngestResult, Job, ParsedDocument, PiiResult
 
 
 class DocpipeClient:
@@ -148,6 +148,27 @@ class DocpipeClient:
         r = self._client.post(f"{self.base_url}/v1/search", json=body)
         r.raise_for_status()
         return r.json()["results"]
+
+    def detect_pii(
+        self,
+        text: Optional[str] = None,
+        *,
+        doc_id: Optional[str] = None,
+        collection: str = "default",
+        types: Optional[list[str]] = None,
+        redact: bool = False,
+        annotate: bool = False,
+    ) -> PiiResult:
+        payload: dict[str, Any] = {"collection": collection, "redact": redact, "annotate": annotate}
+        if text is not None:
+            payload["text"] = text
+        if doc_id is not None:
+            payload["doc_id"] = doc_id
+        if types is not None:
+            payload["types"] = types
+        r = self._client.post(f"{self.base_url}/v1/detect-pii", json=payload)
+        r.raise_for_status()
+        return PiiResult(**r.json())
 
     def annotate(
         self,

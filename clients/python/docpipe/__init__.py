@@ -1,5 +1,5 @@
 from .client import DocpipeClient
-from .models import DocumentInfo, IngestResult, Job, PageContent, ParsedDocument, SearchResult
+from .models import DocumentInfo, IngestResult, Job, PageContent, ParsedDocument, PiiEntity, PiiResult, SearchResult
 
 __all__ = [
     "DocpipeClient",
@@ -9,4 +9,6 @@ __all__ = [
     "IngestResult",
     "DocumentInfo",
     "Job",
+    "PiiEntity",
+    "PiiResult",
 ]

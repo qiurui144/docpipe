@@ -2,7 +2,7 @@ import json as _json
 import respx
 import httpx
 from docpipe.client import DocpipeClient
-from docpipe.models import DocumentInfo, IngestResult, Job, ParsedDocument
+from docpipe.models import DocumentInfo, IngestResult, Job, ParsedDocument, PiiEntity, PiiResult
 
 
 @respx.mock
@@ -109,3 +109,36 @@ def test_async_ingest_returns_job_and_get_job():
     assert isinstance(job, Job)
     assert job.status == "queued"
     assert c.get_job("j1").result.doc_id == "d1"
+
+
+@respx.mock
+def test_detect_pii_returns_entities():
+    respx.post("http://docs/v1/detect-pii").mock(return_value=httpx.Response(200, json={
+        "entities": [{"kind": "email", "text": "a@b.co", "start": 0, "end": 6, "confidence": 1.0, "source": "regex"}],
+        "warnings": [],
+    }))
+    c = DocpipeClient("http://docs")
+    res = c.detect_pii("a@b.co")
+    assert isinstance(res, PiiResult)
+    assert res.entities[0].kind == "email"
+    body = _json.loads(respx.calls.last.request.content)
+    assert body["text"] == "a@b.co"
+
+
+@respx.mock
+def test_detect_pii_doc_mode_with_page_num_and_annotations():
+    respx.post("http://docs/v1/detect-pii").mock(return_value=httpx.Response(200, json={
+        "entities": [{"kind": "phone", "text": "555-1234", "start": 5, "end": 13,
+                      "confidence": 0.95, "source": "ner", "page_num": 2}],
+        "annotations": [{"item_id": "ann-abc"}],
+        "warnings": [],
+    }))
+    c = DocpipeClient("http://docs")
+    res = c.detect_pii(doc_id="doc-1", annotate=True)
+    assert res.entities[0].page_num == 2
+    assert res.annotations is not None
+    assert res.annotations[0]["item_id"] == "ann-abc"
+    body = _json.loads(respx.calls.last.request.content)
+    assert body["doc_id"] == "doc-1"
+    assert body["annotate"] is True
+    assert "text" not in body

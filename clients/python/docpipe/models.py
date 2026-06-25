@@ -71,3 +71,21 @@ class Job(BaseModel):
     created_at: str
     result: IngestResult | None = None
     error: str | None = None
+
+
+class PiiEntity(BaseModel):
+    kind: str
+    text: str
+    start: int
+    end: int
+    confidence: float
+    source: str
+    page_num: int | None = None
+
+
+class PiiResult(BaseModel):
+    entities: list[PiiEntity] = []
+    redacted_text: str | None = None
+    mapping: dict[str, str] | None = None
+    annotations: list[dict[str, Any]] | None = None
+    warnings: list[str] = []
