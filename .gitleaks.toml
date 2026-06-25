@@ -1,0 +1,14 @@
+title = "docpipe gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "synthetic test fixtures + placeholders (no real PII/secrets)"
+paths = [
+  '''crates/docpipe-core/tests/fixtures/.*''',
+]
+regexes = [
+  '''11010519491231002X''',
+  '''13800138000''',
+]
