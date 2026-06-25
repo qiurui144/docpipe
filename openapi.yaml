@@ -277,6 +277,40 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /detect-pii:
+    post:
+      summary: 检测并处理文档或文本中的 PII 实体
+      operationId: detectPii
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DetectPiiRequest"
+      responses:
+        "200":
+          description: PII 检测结果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PiiResult"
+        "400":
+          description: 参数错误（缺少 text 和 doc_id，或未知 PII 类型）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: bad-request
+        "404":
+          description: 文档不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: document-not-found
+
   /health:
     get:
       summary: 健康检查
@@ -660,3 +694,106 @@ components:
         error:
           type: string
           nullable: true
+
+    DetectPiiRequest:
+      type: object
+      properties:
+        text:
+          type: string
+          description: 待检测的原始文本（与 doc_id 二选一，同时提供时 text 优先）
+        doc_id:
+          type: string
+          description: 已摄入文档的 ID（与 text 二选一）
+        collection:
+          type: string
+          default: default
+          description: 文档所在集合（仅 doc_id 模式有效）
+        types:
+          type: array
+          items:
+            type: string
+            enum: [id_card, phone, email, bank_card, plate, ipv4, person, address, org]
+          description: 限定检测的 PII 类型；省略则检测全部类型。未知值返回 400。
+        redact:
+          type: boolean
+          default: false
+          description: 是否对检测到的 PII 进行脱敏替换
+        annotate:
+          type: boolean
+          default: false
+          description: 是否将 PII 实体写入文档标注（仅 doc_id 模式有效；text 模式下返回警告）
+
+    PiiEntity:
+      type: object
+      required:
+        - kind
+        - text
+        - start
+        - end
+        - confidence
+        - source
+      properties:
+        kind:
+          type: string
+          enum: [id_card, phone, email, bank_card, plate, ipv4, person, address, org]
+          description: PII 实体类型
+        text:
+          type: string
+          description: 原始实体文本
+        start:
+          type: integer
+          description: 实体在文本中的起始字符偏移量（0-based）
+        end:
+          type: integer
+          description: 实体在文本中的结束字符偏移量（exclusive）
+        confidence:
+          type: number
+          format: float
+          description: 置信度（0–1）
+        source:
+          type: string
+          enum: [regex, llm]
+          description: 检测来源
+        page_num:
+          type: integer
+          nullable: true
+          description: 所在页码（doc_id 模式下的页内定位；text 模式为 null）
+
+    PiiResult:
+      type: object
+      required:
+        - entities
+        - warnings
+      properties:
+        entities:
+          type: array
+          items:
+            $ref: "#/components/schemas/PiiEntity"
+          description: 检测到的 PII 实体列表
+        redacted_text:
+          type: string
+          nullable: true
+          description: 脱敏后的文本（redact=true 时存在，否则为 null）
+        mapping:
+          type: object
+          additionalProperties:
+            type: string
+          nullable: true
+          description: 占位符→原始文本的映射（redact=true 时存在，否则为 null）
+        annotations:
+          type: array
+          nullable: true
+          items:
+            type: object
+            required:
+              - item_id
+            properties:
+              item_id:
+                type: string
+                description: 写入的标注 ID
+          description: 写入的标注列表（annotate=true 且 doc_id 模式时存在，否则为 null）
+        warnings:
+          type: array
+          items:
+            type: string
+          description: 警告信息（如 text 模式下 annotate=true 时的提示）
