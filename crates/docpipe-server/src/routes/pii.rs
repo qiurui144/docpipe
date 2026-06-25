@@ -3,7 +3,9 @@
 use std::sync::Arc;
 
 use axum::{extract::State, http::StatusCode, Json};
+use docpipe_core::annotator::AnnotateRequest;
 use docpipe_core::pii::{self, PiiKind};
+use docpipe_core::types::AnnotationSource;
 use serde::Deserialize;
 
 use crate::state::AppState;
@@ -38,27 +40,7 @@ pub async fn detect_pii(
     State(state): State<Arc<AppState>>,
     Json(req): Json<DetectPiiReq>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let text = match (&req.text, &req.doc_id) {
-        (Some(t), _) => t.clone(),
-        (None, Some(id)) => match state.sdk.document_text(id, &req.collection).await {
-            Ok(t) => t,
-            Err(e) => {
-                return (
-                    StatusCode::from_u16(e.http_status()).unwrap(),
-                    Json(serde_json::json!({"error": e.code()})),
-                )
-            }
-        },
-        (None, None) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(
-                    serde_json::json!({"error": "bad-request", "detail": "text or doc_id required"}),
-                ),
-            )
-        }
-    };
-
+    // 解析类型过滤器（在分支前，text/doc_id 两路都需要）。
     let kinds = match req.types.as_ref().map(|v| parse_kinds(v)) {
         Some(Err(bad)) => {
             return (
@@ -73,29 +55,155 @@ pub async fn detect_pii(
         None => None,
     };
 
-    let res = pii::detect(&text, state.ner.as_ref(), kinds.as_deref()).await;
+    match (&req.text, &req.doc_id) {
+        // ── 纯文本模式（无 doc_id）──────────────────────────────────────────
+        (Some(text), _) => {
+            let res = pii::detect(text, state.ner.as_ref(), kinds.as_deref()).await;
+            let mut warnings = res.warnings.clone();
+            if req.annotate {
+                warnings.push("annotate requires doc_id".to_string());
+            }
+            let mut body =
+                serde_json::json!({ "entities": res.entities, "warnings": warnings });
+            if req.redact {
+                let (red, map) = pii::redact_text(text, &res.entities);
+                body["redacted_text"] = serde_json::json!(red);
+                body["mapping"] = serde_json::json!(map);
+            }
+            (StatusCode::OK, Json(body))
+        }
 
-    // 先收集所有 warnings，最后统一写入 body。
-    let mut warnings = res.warnings.clone();
+        // ── 文档模式（有 doc_id）────────────────────────────────────────────
+        (None, Some(doc_id)) => {
+            let collection = &req.collection;
 
-    // annotate=true 时跳过并 warn：doc_id 必须提供，且需要额外 annotator 集成；
-    // 本版本 detect+redact 已实现，annotate 路径留待 Task 8。
-    if req.annotate {
-        warnings.push(
-            "annotate=true not yet implemented: use POST /v1/annotate to persist entities"
-                .to_string(),
-        );
+            // 获取 chunk 定位符；空 vec = 文档不存在。
+            let locators =
+                match state.sdk.document_locators(doc_id, collection).await {
+                    Ok(locs) => locs,
+                    Err(e) => {
+                        return (
+                            StatusCode::from_u16(e.http_status()).unwrap(),
+                            Json(serde_json::json!({"error": e.code()})),
+                        )
+                    }
+                };
+
+            if locators.is_empty() {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({"error": "document-not-found"})),
+                );
+            }
+
+            // 逐 chunk 检测，产出带 page_num 的实体。
+            let mut all_entities: Vec<serde_json::Value> = Vec::new();
+            let mut warnings_set: std::collections::BTreeSet<String> =
+                std::collections::BTreeSet::new();
+
+            for loc in &locators {
+                let res =
+                    pii::detect(&loc.text, state.ner.as_ref(), kinds.as_deref())
+                        .await;
+                for w in &res.warnings {
+                    warnings_set.insert(w.clone());
+                }
+                for ent in &res.entities {
+                    let global_start = loc.char_offset as usize + ent.start;
+                    let global_end = loc.char_offset as usize + ent.end;
+                    let kind_str = serde_json::to_value(ent.kind)
+                        .unwrap_or(serde_json::Value::Null)
+                        .as_str()
+                        .unwrap_or("unknown")
+                        .to_string();
+                    all_entities.push(serde_json::json!({
+                        "kind":       kind_str,
+                        "text":       ent.text,
+                        "start":      global_start,
+                        "end":        global_end,
+                        "confidence": ent.confidence,
+                        "source":     ent.source,
+                        "page_num":   loc.page_num,
+                    }));
+                }
+            }
+
+            let warnings: Vec<String> = warnings_set.into_iter().collect();
+            let mut body = serde_json::json!({
+                "entities": all_entities,
+                "warnings": warnings,
+            });
+
+            // redact=true：对拼接文本做平铺检测+脱敏（独立于 page-aware 实体）。
+            if req.redact {
+                let joined_text =
+                    match state.sdk.document_text(doc_id, collection).await {
+                        Ok(t) => t,
+                        Err(e) => {
+                            return (
+                                StatusCode::from_u16(e.http_status()).unwrap(),
+                                Json(serde_json::json!({"error": e.code()})),
+                            )
+                        }
+                    };
+                let flat_res =
+                    pii::detect(&joined_text, state.ner.as_ref(), kinds.as_deref())
+                        .await;
+                let (red, map) = pii::redact_text(&joined_text, &flat_res.entities);
+                body["redacted_text"] = serde_json::json!(red);
+                body["mapping"] = serde_json::json!(map);
+            }
+
+            // annotate=true：为每个 page-aware 实体创建标注。
+            if req.annotate {
+                let mut annotations: Vec<serde_json::Value> = Vec::new();
+                // 再次遍历 locators，对每 chunk 重新检测（异步 detect 仅正则，代价极小）。
+                for loc in &locators {
+                    let res = pii::detect(
+                        &loc.text,
+                        state.ner.as_ref(),
+                        kinds.as_deref(),
+                    )
+                    .await;
+                    for ent in &res.entities {
+                        let kind_str = serde_json::to_value(ent.kind)
+                            .unwrap_or(serde_json::Value::Null)
+                            .as_str()
+                            .unwrap_or("unknown")
+                            .to_string();
+                        // page-local char_offset = loc.char_offset + ent.start
+                        let page_local_offset = loc.char_offset + ent.start as u32;
+                        let item = state.sdk.annotate(AnnotateRequest {
+                            doc_id: doc_id.clone(),
+                            original_text: ent.text.clone(),
+                            content: format!("检测到 PII: {kind_str}"),
+                            label: format!("pii-{kind_str}"),
+                            color: "#ef4444".to_string(),
+                            page_num: loc.page_num,
+                            char_offset: page_local_offset,
+                            bbox: None,
+                            source: AnnotationSource::Ai,
+                            skill_metadata: None,
+                        });
+                        annotations
+                            .push(serde_json::json!({ "item_id": item.item_id }));
+                    }
+                }
+                body["annotations"] = serde_json::json!(annotations);
+            }
+
+            (StatusCode::OK, Json(body))
+        }
+
+        // ── 两者皆无 ────────────────────────────────────────────────────────
+        (None, None) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": "bad-request",
+                "detail": "text or doc_id required",
+            })),
+        ),
     }
-
-    let mut body = serde_json::json!({ "entities": res.entities, "warnings": warnings });
-
-    if req.redact {
-        let (red, map) = pii::redact_text(&text, &res.entities);
-        body["redacted_text"] = serde_json::json!(red);
-        body["mapping"] = serde_json::json!(map);
-    }
-
-    (StatusCode::OK, Json(body))
 }
 
 #[cfg(test)]
@@ -172,5 +280,95 @@ mod tests {
             .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(json["error"], "bad-request", "got: {json}");
+    }
+
+    /// Task 16: 文档模式 + annotate=true → 标注持久化 + page_num 携带。
+    #[tokio::test]
+    async fn detect_pii_annotate_doc_id() {
+        let state = Arc::new(AppState::for_test());
+
+        // 注入一个含邮箱的合成 HTML 文档。
+        let html = b"<html><body>\xe8\x81\x94\xe7\xb3\xbb a@b.co</body></html>";
+        let r = state
+            .sdk
+            .ingest_file(
+                html,
+                Some("a.html"),
+                docpipe_core::types::ParseConfig::default(),
+                "default",
+                "2026-06-24T00:00:00Z",
+            )
+            .await
+            .unwrap();
+
+        // 调用 handler：doc_id + annotate=true。
+        let req_body: DetectPiiReq = serde_json::from_value(serde_json::json!({
+            "doc_id": r.doc_id,
+            "annotate": true
+        }))
+        .unwrap();
+        let (status, body) =
+            detect_pii(axum::extract::State(state.clone()), axum::Json(req_body))
+                .await;
+
+        assert_eq!(status, StatusCode::OK, "expected 200, got body: {}", body.0);
+
+        // entities 非空，每个都有 page_num。
+        let entities = body.0["entities"]
+            .as_array()
+            .expect("entities should be an array");
+        assert!(
+            !entities.is_empty(),
+            "expected at least one entity in doc mode, body: {}",
+            body.0
+        );
+        for ent in entities {
+            assert!(
+                ent["page_num"].is_number(),
+                "each entity must have page_num, got: {ent}"
+            );
+        }
+
+        // annotations 非空。
+        let annotations = body.0["annotations"]
+            .as_array()
+            .expect("annotations should be present when annotate=true");
+        assert!(
+            !annotations.is_empty(),
+            "expected annotations non-empty, body: {}",
+            body.0
+        );
+        for ann in annotations {
+            assert!(
+                ann["item_id"].is_string(),
+                "annotation must have item_id string, got: {ann}"
+            );
+        }
+    }
+
+    /// Task 16: 纯文本模式 + annotate=true → 200 + warning 含 "annotate requires doc_id"。
+    #[tokio::test]
+    async fn detect_pii_annotate_text_warns_no_doc_id() {
+        let state = make_state();
+        let req_body: DetectPiiReq = serde_json::from_value(serde_json::json!({
+            "text": "a@b.co",
+            "annotate": true
+        }))
+        .unwrap();
+        let (status, body) =
+            detect_pii(axum::extract::State(state.clone()), axum::Json(req_body))
+                .await;
+
+        assert_eq!(status, StatusCode::OK, "expected 200, body: {}", body.0);
+        let warnings = body.0["warnings"]
+            .as_array()
+            .expect("warnings must be array");
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.as_str().unwrap_or("").contains("annotate requires doc_id")),
+            "expected warning about annotate requires doc_id, got: {}",
+            body.0
+        );
     }
 }
