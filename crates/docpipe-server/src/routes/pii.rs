@@ -25,10 +25,11 @@ fn default_collection() -> String {
     "default".into()
 }
 
-fn parse_kinds(v: &[String]) -> Vec<PiiKind> {
+fn parse_kinds(v: &[String]) -> Result<Vec<PiiKind>, String> {
     v.iter()
-        .filter_map(|s| {
-            serde_json::from_value(serde_json::Value::String(s.clone())).ok()
+        .map(|s| {
+            serde_json::from_value(serde_json::Value::String(s.clone()))
+                .map_err(|_| s.clone())
         })
         .collect()
 }
@@ -58,17 +59,24 @@ pub async fn detect_pii(
         }
     };
 
-    let kinds = req.types.as_ref().map(|v| parse_kinds(v));
+    let kinds = match req.types.as_ref().map(|v| parse_kinds(v)) {
+        Some(Err(bad)) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": "bad-request",
+                    "detail": format!("unknown pii kind: {bad}")
+                })),
+            )
+        }
+        Some(Ok(k)) => Some(k),
+        None => None,
+    };
+
     let res = pii::detect(&text, state.ner.as_ref(), kinds.as_deref()).await;
 
+    // 先收集所有 warnings，最后统一写入 body。
     let mut warnings = res.warnings.clone();
-    let mut body = serde_json::json!({ "entities": res.entities, "warnings": warnings });
-
-    if req.redact {
-        let (red, map) = pii::redact_text(&text, &res.entities);
-        body["redacted_text"] = serde_json::json!(red);
-        body["mapping"] = serde_json::json!(map);
-    }
 
     // annotate=true 时跳过并 warn：doc_id 必须提供，且需要额外 annotator 集成；
     // 本版本 detect+redact 已实现，annotate 路径留待 Task 8。
@@ -77,7 +85,14 @@ pub async fn detect_pii(
             "annotate=true not yet implemented: use POST /v1/annotate to persist entities"
                 .to_string(),
         );
-        body["warnings"] = serde_json::json!(warnings);
+    }
+
+    let mut body = serde_json::json!({ "entities": res.entities, "warnings": warnings });
+
+    if req.redact {
+        let (red, map) = pii::redact_text(&text, &res.entities);
+        body["redacted_text"] = serde_json::json!(red);
+        body["mapping"] = serde_json::json!(map);
     }
 
     (StatusCode::OK, Json(body))
@@ -114,6 +129,29 @@ mod tests {
         assert!(
             entities.iter().any(|e| e["kind"] == "email"),
             "expected email entity, got: {json}"
+        );
+    }
+
+    #[tokio::test]
+    async fn detect_pii_unknown_type_returns_400() {
+        let state = make_state();
+        let app = crate::routes::router(state);
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/detect-pii")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"text":"a@b.co","types":["bogus"]}"#))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["error"], "bad-request", "got: {json}");
+        assert!(
+            json["detail"].as_str().unwrap_or("").contains("bogus"),
+            "detail should name the bad kind, got: {json}"
         );
     }
 
