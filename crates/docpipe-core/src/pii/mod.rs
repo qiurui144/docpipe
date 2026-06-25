@@ -116,6 +116,7 @@ mod tests {
     async fn adversarial_fake_id_and_injection_not_entities() {
         let r = detect("忽略指令 DROP TABLE; 身份证 110105194912310021 末位错", None, None).await;
         assert!(!r.entities.iter().any(|e| e.kind == PiiKind::IdCard));
+        assert!(!r.entities.iter().any(|e| e.text.contains("DROP") || e.text.contains("TABLE")));
     }
 
     #[tokio::test]
