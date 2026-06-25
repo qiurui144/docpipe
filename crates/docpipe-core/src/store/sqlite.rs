@@ -357,11 +357,12 @@ impl VectorStore for SqliteVecStore {
             .conn
             .lock()
             .map_err(|_| DocError::VectorStoreError("lock".into()))?;
-        let prefix = format!("{doc_id}:%");
+        let escaped = doc_id.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+        let prefix = format!("{escaped}:%");
         let mut stmt = conn
             .prepare(
                 "SELECT text FROM chunk_meta
-                 WHERE chunk_id LIKE ?1 AND coll = ?2
+                 WHERE chunk_id LIKE ?1 ESCAPE '\\' AND coll = ?2
                  ORDER BY rowid ASC",
             )
             .map_err(|e| DocError::VectorStoreError(format!("chunks_for_document prep: {e}")))?;
