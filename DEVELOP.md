@@ -14,6 +14,8 @@
 - [Lite vs Full 部署决策](#lite-vs-full-部署决策)
 - [客户端生成说明](#客户端生成说明)
 - [从 attune-enterprise docling-serve 迁移](#从-attune-enterprise-docling-serve-迁移)
+- [PII 检测模块](#pii-检测模块)
+- [Secret / PII 扫描](#secret--pii-扫描)
 - [已知限制与路线图](#已知限制与路线图)
 
 ---
@@ -163,6 +165,9 @@ cargo run -p docpipe-server
 | `MAX_OCR_CONCURRENCY` | `2` | 并发 OCR 任务上限 |
 | `PDFIUM_DYNAMIC_LIB_PATH` | 未设置 | libpdfium.so 绝对路径（未设置时 PDF 解析会报错） |
 | `LOG_LEVEL` | `info` | 日志级别（trace/debug/info/warn/error） |
+| `DOCPIPE_PII_BASE_URL` | 未设置 | PII LLM NER 端点（OpenAI-compatible）；未设置时 person/address/org 检测跳过 |
+| `DOCPIPE_PII_MODEL` | `deepseek-v4` | PII NER 模型名 |
+| `DOCPIPE_PII_API_KEY` | 未设置 | PII NER API key |
 
 ---
 
@@ -336,6 +341,54 @@ shim 层保持与原 `parse_document()` 相同的返回结构：
 ```
 
 callers（`apps/cases/analyzers/pdf.py`、`apps/knowledge/views.py`）无需修改。
+
+---
+
+## PII 检测模块
+
+`crates/docpipe-core/src/pii/` 实现 PII 检测逻辑；`crates/docpipe-server/src/routes/pii.rs` 暴露 `/v1/detect-pii` 端点。
+
+### 目录结构
+
+```
+crates/docpipe-core/src/pii/
+  mod.rs       — PiiKind、PiiEntity、detect() 公共入口
+  patterns.rs  — 确定性正则（id_card / phone / email / bank_card / plate / ipv4）
+  redact.rs    — 可逆脱敏（placeholder ↔ 原文映射）
+  llm.rs       — LlmNer：OpenAI-compatible NER（person / address / org）
+```
+
+### 环境变量（PII LLM NER）
+
+| 变量 | 默认值 | 说明 |
+|-----|--------|------|
+| `DOCPIPE_PII_BASE_URL` | 未设置 | OpenAI-compatible NER 端点；未设置时 LLM NER 被跳过，仅正则生效 |
+| `DOCPIPE_PII_MODEL` | `deepseek-v4` | NER 使用的模型名 |
+| `DOCPIPE_PII_API_KEY` | 未设置 | Bearer token |
+
+**弱模型降级**：若服务端探测到 3B 级本地模型（model 名含 `3b` / `mini` 等），LLM NER 自动禁用，
+推入 warning 字段，正则类型正常返回。
+
+---
+
+## Secret / PII 扫描
+
+仓库内置 `.pre-commit-config.yaml`，配置了 `gitleaks` hook，防止密钥和个人信息意外进入版本库。
+
+**本地启用**：
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+此后每次 `git commit` 前 gitleaks 会自动扫描暂存文件。如需手动全量扫描：
+
+```bash
+pre-commit run gitleaks --all-files
+```
+
+**CI**：GitHub Actions 的 CI workflow 同样在每次 push/PR 时运行 gitleaks，任何命中均阻断合并。
 
 ---
 

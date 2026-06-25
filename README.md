@@ -9,8 +9,8 @@ trait system, wrapped by an HTTP server, with Python and TypeScript clients. Tur
 (text-layer **or** scanned) into structured, searchable, annotatable content — entirely on your own
 infrastructure, no cloud API required.
 
-> Status: **v0.1.0** — core pipeline implemented and verified end-to-end on Linux x64 and Windows x64.
-> See [Known Limitations](#known-limitations).
+> Status: **v1.0.0** — core pipeline + async ingest/documents/jobs API + PII detection.
+> See [Known Limitations](#known-limitations) and [RELEASE.md](./RELEASE.md).
 
 ## Why
 
@@ -85,6 +85,7 @@ docker compose -f docker/full/docker-compose.yml up    # Full tier (+ MinerU sid
 | GET  | `/v1/documents` | list ingested documents |
 | GET/DELETE | `/v1/documents/{doc_id}` | get/delete a document and its vectors |
 | GET  | `/v1/jobs/{job_id}` | async ingest job status |
+| POST | `/v1/detect-pii` | detect (and optionally redact/annotate) PII entities |
 | GET  | `/v1/health` | backend readiness + tier |
 
 ```bash
@@ -130,6 +131,40 @@ doc = DocpipeClient("http://localhost:8200").parse("scan.pdf")
 ```
 
 More end-to-end examples are available under [`examples/`](./examples/).
+
+### PII Detection
+
+Detect (and optionally redact or annotate) personally identifiable information in free text
+or in a previously ingested document:
+
+```bash
+# detect PII in raw text
+curl -X POST http://localhost:8200/v1/detect-pii \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"联系 张三，手机 13800138000，邮箱 zhang@example.com","redact":true}'
+```
+
+Python SDK one-liner:
+
+```python
+result = DocpipeClient("http://localhost:8200").detect_pii(
+    "手机 13800138000，邮箱 zhang@example.com",
+    redact=True,
+)
+```
+
+TypeScript SDK one-liner:
+
+```typescript
+const result = await client.detectPii({
+  text: "手机 13800138000，邮箱 zhang@example.com",
+  redact: true,
+});
+```
+
+Supported PII types: `id_card`, `phone`, `email`, `bank_card`, `plate`, `ipv4` (deterministic
+regex); `person`, `address`, `org` (LLM NER — requires `DOCPIPE_PII_BASE_URL` / `_API_KEY`).
+Set `annotate: true` together with `doc_id` to persist per-entity annotations.
 
 ## Verified
 

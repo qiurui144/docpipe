@@ -8,8 +8,8 @@
 TypeScript 客户端。把 PDF / DOCX / HTML（**文字层或扫描件**）转成结构化、可检索、可批注的内容 —— 全程跑在你
 自己的基础设施上，无需任何云端 API。
 
-> 状态：**v0.1.0** —— 核心管线已实现，并在 Linux x64 与 Windows x64 上完成端到端验证。
-> 见[已知限制](#已知限制)。
+> 状态：**v1.0.0** —— 核心管线 + 异步 ingest/documents/jobs API + PII 检测。
+> 见[已知限制](#已知限制)和 [RELEASE.md](./RELEASE.md)。
 
 ## 为什么
 
@@ -83,6 +83,7 @@ docker compose -f docker/full/docker-compose.yml up    # Full 层（+ MinerU sid
 | GET  | `/v1/documents` | 文档列表 |
 | GET/DELETE | `/v1/documents/{doc_id}` | 文档详情 / 删除文档及向量 |
 | GET  | `/v1/jobs/{job_id}` | 异步 ingest 任务状态 |
+| POST | `/v1/detect-pii` | 检测（并可选脱敏/批注）PII 实体 |
 | GET  | `/v1/health` | 后端就绪状态 + 部署层级 |
 
 ```bash
@@ -126,6 +127,39 @@ doc = DocpipeClient("http://localhost:8200").parse("scan.pdf")
 ```
 
 更多端到端调用样例见 [`examples/`](./examples/)。
+
+### PII 检测
+
+对自由文本或已摄入的文档检测个人身份信息，可选脱敏或批注：
+
+```bash
+# 对原始文本检测 PII
+curl -X POST http://localhost:8200/v1/detect-pii \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"联系 张三，手机 13800138000，邮箱 zhang@example.com","redact":true}'
+```
+
+Python SDK 一行调用：
+
+```python
+result = DocpipeClient("http://localhost:8200").detect_pii(
+    "手机 13800138000，邮箱 zhang@example.com",
+    redact=True,
+)
+```
+
+TypeScript SDK 一行调用：
+
+```typescript
+const result = await client.detectPii({
+  text: "手机 13800138000，邮箱 zhang@example.com",
+  redact: true,
+});
+```
+
+支持的 PII 类型：`id_card`、`phone`、`email`、`bank_card`、`plate`、`ipv4`（确定性正则）；
+`person`、`address`、`org`（LLM NER —— 需配置 `DOCPIPE_PII_BASE_URL` / `_API_KEY`）。
+配合 `doc_id` 传入 `annotate: true` 可将每个实体持久化为文档批注。
 
 ## 已验证
 
