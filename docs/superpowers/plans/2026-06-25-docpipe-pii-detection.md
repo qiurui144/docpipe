@@ -996,6 +996,146 @@ git push origin master --tags
 
 ---
 
+### Task 15: Persist chunk char_offset + page-aware locator accessor (annotate plumbing)
+
+> Added 2026-06-25 after the Task 7 review: user chose to fully implement `annotate=true` now. Annotations need `(page_num, page-local char_offset)`; the chunker computes `Chunk.char_offset` (within-page) but the store does not persist it. This task persists it and exposes a page-aware accessor.
+
+**Files:**
+- Modify: `crates/docpipe-core/src/types.rs` (add `ChunkLocator`)
+- Modify: `crates/docpipe-core/src/store/mod.rs` (trait method), `crates/docpipe-core/src/store/sqlite.rs` (schema + INSERT + accessor)
+- Modify: `crates/docpipe-core/src/facade.rs` (passthrough `document_locators`)
+
+**Interfaces PRODUCED:**
+- `types::ChunkLocator { pub page_num: u32, pub char_offset: u32, pub text: String }` (derive Debug, Clone, Serialize, Deserialize, PartialEq)
+- `async fn VectorStore::document_locators(&self, doc_id: &str, collection: &str) -> Result<Vec<ChunkLocator>>` (stored order; `page_num` = first element of the chunk's `page_refs`, or 0 if none)
+- `async fn Docpipe::document_locators(&self, doc_id: &str, collection: &str) -> Result<Vec<ChunkLocator>>`
+
+- [ ] **Step 1: Write the failing test** in `facade.rs` tests (reuse the `test_sdk_with_doc` helper from Task 6; synthetic data):
+
+```rust
+    #[tokio::test]
+    async fn document_locators_carry_page_and_offset() {
+        let sdk = test_sdk_with_doc("d2", "default", &["第一段 a@b.co", "第二段 某甲"]).await;
+        let locs = sdk.document_locators("d2", "default").await.unwrap();
+        assert!(!locs.is_empty());
+        assert!(locs.iter().all(|l| l.page_num == 1));
+        assert!(locs.iter().any(|l| l.text.contains("a@b.co")));
+        assert!(sdk.document_locators("missing", "default").await.unwrap().is_empty());
+    }
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `cargo test -p docpipe-core facade::tests::document_locators`
+Expected: FAIL — `document_locators` / `ChunkLocator` not found.
+
+- [ ] **Step 3: Implement**
+  - In `sqlite.rs`: add `char_offset INTEGER NOT NULL DEFAULT 0` to the `CREATE TABLE chunk_meta` statement. Immediately after creating the table, run a defensive upgrade for pre-existing DBs and ignore the "duplicate column" error:
+    ```rust
+    let _ = conn.execute("ALTER TABLE chunk_meta ADD COLUMN char_offset INTEGER NOT NULL DEFAULT 0", []);
+    ```
+  - In the `upsert` INSERT, add the column + bind `ec.chunk.char_offset`:
+    ```rust
+    "INSERT INTO chunk_meta (chunk_id, coll, text, page_refs, char_offset) VALUES (?1, ?2, ?3, ?4, ?5)",
+    rusqlite::params![ec.chunk.chunk_id, collection, ec.chunk.text, page_refs, ec.chunk.char_offset],
+    ```
+  - Add the trait method to `VectorStore` and implement in `SqliteVecStore`:
+    ```rust
+    async fn document_locators(&self, doc_id: &str, collection: &str) -> Result<Vec<ChunkLocator>> {
+        let escaped = doc_id.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+        let prefix = format!("{escaped}:%");
+        let conn = self.conn.lock().await; // match the existing lock pattern in this file
+        let mut stmt = conn
+            .prepare("SELECT text, page_refs, char_offset FROM chunk_meta WHERE chunk_id LIKE ?1 ESCAPE '\\' AND coll = ?2 ORDER BY rowid")
+            .map_err(|e| DocError::VectorStoreError(format!("prepare locators: {e}")))?;
+        let rows = stmt
+            .query_map(rusqlite::params![prefix, collection], |r| {
+                let text: String = r.get(0)?;
+                let page_refs_json: String = r.get(1)?;
+                let char_offset: u32 = r.get(2)?;
+                Ok((text, page_refs_json, char_offset))
+            })
+            .map_err(|e| DocError::VectorStoreError(format!("query locators: {e}")))?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (text, page_refs_json, char_offset) = row.map_err(|e| DocError::VectorStoreError(format!("row: {e}")))?;
+            let page_num = serde_json::from_str::<Vec<u32>>(&page_refs_json).ok().and_then(|v| v.first().copied()).unwrap_or(0);
+            out.push(ChunkLocator { page_num, char_offset, text });
+        }
+        Ok(out)
+    }
+    ```
+    (Adapt `self.conn.lock()` / error style to exactly match the existing methods in `sqlite.rs` — read `chunks_for_document` first.)
+  - In `facade.rs` add the passthrough: `pub async fn document_locators(&self, doc_id: &str, collection: &str) -> Result<Vec<ChunkLocator>> { self.store.document_locators(doc_id, collection).await }`
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `cargo test -p docpipe-core` (whole crate — trait changed) + `cargo clippy -p docpipe-core --all-targets -- -D warnings`
+Expected: PASS + clean.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add crates/docpipe-core/src/types.rs crates/docpipe-core/src/store/mod.rs crates/docpipe-core/src/store/sqlite.rs crates/docpipe-core/src/facade.rs
+git commit -m "feat(core): persist chunk char_offset + page-aware document_locators accessor"
+```
+
+---
+
+### Task 16: Document-aware detect + annotate persistence in route
+
+> Wires Task 15's locators into `/v1/detect-pii` so `annotate=true` with a `doc_id` persists each PII entity as an annotation with a correct page locator.
+
+**Files:**
+- Modify: `crates/docpipe-server/src/routes/pii.rs`
+
+**Interfaces CONSUMED:** `state.sdk.document_locators` (T15), `state.sdk.document_text` (T6), `state.sdk.annotate` (existing, takes `docpipe_core::annotator::AnnotateRequest`), `pii::detect`/`pii::redact_text`.
+
+**Behavior:**
+- **text input (no doc_id):** unchanged flat detection. If `annotate=true` → push warning `"annotate requires doc_id"` (cannot annotate text with no document).
+- **doc_id input:** fetch `document_locators`; if empty → `document-not-found` (404). Detect per locator; for each entity build an augmented JSON entity `{kind,text,start,end,confidence,source,page_num}` where `start = locator.char_offset + entity.start`, `end = locator.char_offset + entity.end`, `page_num = locator.page_num`. Aggregate warnings (dedup). When `redact=true`, redact the joined `document_text` via a flat detect pass (offsets into joined text; independent of the page-aware entities). When `annotate=true`, for each entity call `sdk.annotate` and collect `{item_id}` into `annotations`.
+
+- [ ] **Step 1: Write the failing test** in `pii.rs` tests (uses `AppState::for_test()`; the test must first ingest a synthetic doc through the sdk so a doc_id exists — reuse the ingest pattern other server tests use; if server tests lack one, ingest via `state.sdk.ingest_file` with a tiny synthetic HTML/text byte slice). Assert: `POST /v1/detect-pii {"doc_id":"<id>","annotate":true}` → 200, response has `annotations` non-empty and each returned entity has a `page_num`. Also `POST {"text":"a@b.co","annotate":true}` → 200 with a warning containing `"annotate requires doc_id"`.
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `cargo test -p docpipe-server detect_pii_annotate`
+Expected: FAIL.
+
+- [ ] **Step 3: Implement** the doc_id branch in `detect_pii` per Behavior above. Build `AnnotateRequest`:
+```rust
+use docpipe_core::annotator::AnnotateRequest;
+use docpipe_core::types::AnnotationSource;
+let item = state.sdk.annotate(AnnotateRequest {
+    doc_id: doc_id.clone(),
+    original_text: ent_text.clone(),
+    content: format!("检测到 PII: {kind_str}"),
+    label: format!("pii-{kind_str}"),
+    color: "#ef4444".to_string(),
+    page_num,
+    char_offset,         // page-local = locator.char_offset + entity.start
+    bbox: None,
+    source: AnnotationSource::Ai,
+    skill_metadata: None,
+});
+annotations.push(serde_json::json!({ "item_id": item.item_id }));
+```
+(`kind_str` = the entity's serialized snake_case kind. Read `routes/annotate.rs` for the exact `AnnotateRequest` field set and `AnnotationSource` import path.)
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `cargo test -p docpipe-server` + `cargo clippy -p docpipe-server --all-targets -- -D warnings`
+Expected: PASS + clean.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add crates/docpipe-server/src/routes/pii.rs
+git commit -m "feat(server): document-aware detect-pii + annotate persistence with page locators"
+```
+
+---
+
 ## Self-Review
 
 **Spec coverage:** §1 positioning → Task 14 docs. §2 scope (detect core + optional redact/annotate; deterministic + LLM types) → T2/T3/T4/T5/T7. §3 data flow → T5 orchestration + T7 route. §4 module boundaries → T1–T7 file map. §5 API contract → T7 route + T8 openapi + T9/T10 SDK. §6 extension points → T2 (add detector), T4 (env model). §7 errors/boundaries → T1 bad-request, T5 degrade, T11 i18n/empty. §8 cost (weak-model disable) → T4 `enabled` + T5 degrade + T14 Known Limitations. §9 test matrix → T2/T11 (happy/edge/error/adversarial/i18n), degrade tested in T5; **multi-seed N=3 LLM tier eval is a manual pre-tag step** — added as an explicit note in Task 14 Step 2 (run real-LLM 3-tier × 3-seed before tag; record F1, set min-tier in RELEASE). §10 back-compat (new endpoint, nullable fields) → T8/T9/T10. §11 risks (offset, fixture re-leak) → T11 offsets + T13 gitleaks.
