@@ -138,6 +138,13 @@ pub struct DocumentInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ChunkLocator {
+    pub page_num: u32,
+    pub char_offset: u32,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct IngestResult {
     pub doc_id: String,
     pub collection: String,

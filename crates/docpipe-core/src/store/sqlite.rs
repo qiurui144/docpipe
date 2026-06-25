@@ -16,7 +16,7 @@ use sqlite_vec::sqlite3_vec_init;
 
 use super::VectorStore;
 use crate::error::{DocError, Result};
-use crate::types::{DocumentInfo, EmbeddedChunk, SearchResult};
+use crate::types::{ChunkLocator, DocumentInfo, EmbeddedChunk, SearchResult};
 
 /// 全局只注册一次 sqlite-vec 扩展。
 static REGISTER_ONCE: Once = Once::new();
@@ -66,18 +66,24 @@ impl SqliteVecStore {
     }
 
     fn init(conn: Connection) -> Result<Self> {
-        // 元数据表：chunk_id ↔ text / collection / page_refs，rowid 与 vec0 同步
+        // 元数据表：chunk_id ↔ text / collection / page_refs / char_offset，rowid 与 vec0 同步
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS chunk_meta (
-                rowid    INTEGER PRIMARY KEY AUTOINCREMENT,
-                chunk_id TEXT NOT NULL,
-                coll     TEXT NOT NULL,
-                text     TEXT NOT NULL,
-                page_refs TEXT NOT NULL,
+                rowid       INTEGER PRIMARY KEY AUTOINCREMENT,
+                chunk_id    TEXT NOT NULL,
+                coll        TEXT NOT NULL,
+                text        TEXT NOT NULL,
+                page_refs   TEXT NOT NULL,
+                char_offset INTEGER NOT NULL DEFAULT 0,
                 UNIQUE(chunk_id, coll)
             );",
         )
         .map_err(|e| DocError::VectorStoreError(format!("create chunk_meta: {e}")))?;
+        // 为已有数据库做无损升级：若列已存在则忽略 duplicate column 错误。
+        let _ = conn.execute(
+            "ALTER TABLE chunk_meta ADD COLUMN char_offset INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
         // 文档注册表：按 (doc_id, collection) 主键唯一
         conn.execute(
             "CREATE TABLE IF NOT EXISTS documents (
@@ -163,8 +169,8 @@ impl VectorStore for SqliteVecStore {
             let page_refs =
                 serde_json::to_string(&ec.chunk.page_refs).unwrap_or_else(|_| "[]".into());
             conn.execute(
-                "INSERT INTO chunk_meta (chunk_id, coll, text, page_refs) VALUES (?1, ?2, ?3, ?4)",
-                rusqlite::params![ec.chunk.chunk_id, collection, ec.chunk.text, page_refs],
+                "INSERT INTO chunk_meta (chunk_id, coll, text, page_refs, char_offset) VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![ec.chunk.chunk_id, collection, ec.chunk.text, page_refs, ec.chunk.char_offset],
             )
             .map_err(|e| DocError::VectorStoreError(format!("insert meta: {e}")))?;
             let rowid = conn.last_insert_rowid();
@@ -374,6 +380,53 @@ impl VectorStore for SqliteVecStore {
             out.push(
                 row.map_err(|e| DocError::VectorStoreError(format!("chunks_for_document row: {e}")))?,
             );
+        }
+        Ok(out)
+    }
+
+    /// 返回文档所有 chunk 的 (page_num, char_offset, text) 三元组（按存储顺序）。
+    /// page_num 取 page_refs JSON 数组第一个元素，若为空则为 0。
+    async fn document_locators(
+        &self,
+        doc_id: &str,
+        collection: &str,
+    ) -> Result<Vec<ChunkLocator>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| DocError::VectorStoreError("lock".into()))?;
+        let escaped = doc_id.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+        let prefix = format!("{escaped}:%");
+        let mut stmt = conn
+            .prepare(
+                "SELECT text, page_refs, char_offset FROM chunk_meta
+                 WHERE chunk_id LIKE ?1 ESCAPE '\\' AND coll = ?2
+                 ORDER BY rowid ASC",
+            )
+            .map_err(|e| DocError::VectorStoreError(format!("document_locators prep: {e}")))?;
+        let rows = stmt
+            .query_map(rusqlite::params![prefix, collection], |r| {
+                let text: String = r.get(0)?;
+                let page_refs_json: String = r.get(1)?;
+                let char_offset: u32 = r.get(2)?;
+                Ok((text, page_refs_json, char_offset))
+            })
+            .map_err(|e| {
+                DocError::VectorStoreError(format!("document_locators query: {e}"))
+            })?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (text, page_refs_json, char_offset) =
+                row.map_err(|e| DocError::VectorStoreError(format!("document_locators row: {e}")))?;
+            let page_num = serde_json::from_str::<Vec<u32>>(&page_refs_json)
+                .ok()
+                .and_then(|v| v.first().copied())
+                .unwrap_or(0);
+            out.push(ChunkLocator {
+                page_num,
+                char_offset,
+                text,
+            });
         }
         Ok(out)
     }

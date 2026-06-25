@@ -15,7 +15,8 @@ use crate::parser::pdf::PdfParser;
 use crate::parser::DocParser;
 use crate::store::VectorStore;
 use crate::types::{
-    AnnotatableItem, DocFormat, EmbeddedChunk, ParseConfig, ParsedDocument, SearchResult,
+    AnnotatableItem, ChunkLocator, DocFormat, EmbeddedChunk, ParseConfig, ParsedDocument,
+    SearchResult,
 };
 
 pub struct DocpipeBuilder {
@@ -260,6 +261,15 @@ impl Docpipe {
         }
         Ok(chunks.join("\n"))
     }
+
+    /// 返回文档所有 chunk 的 (page_num, char_offset, text) 定位符（按存储顺序）。
+    pub async fn document_locators(
+        &self,
+        doc_id: &str,
+        collection: &str,
+    ) -> Result<Vec<ChunkLocator>> {
+        self.store.document_locators(doc_id, collection).await
+    }
 }
 
 #[cfg(test)]
@@ -409,6 +419,16 @@ mod tests {
             .await
             .unwrap();
         sdk
+    }
+
+    #[tokio::test]
+    async fn document_locators_carry_page_and_offset() {
+        let sdk = test_sdk_with_doc("d2", "default", &["第一段 a@b.co", "第二段 某甲"]).await;
+        let locs = sdk.document_locators("d2", "default").await.unwrap();
+        assert!(!locs.is_empty());
+        assert!(locs.iter().all(|l| l.page_num == 1));
+        assert!(locs.iter().any(|l| l.text.contains("a@b.co")));
+        assert!(sdk.document_locators("missing", "default").await.unwrap().is_empty());
     }
 
     #[tokio::test]
