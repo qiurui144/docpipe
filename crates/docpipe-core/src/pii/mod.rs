@@ -108,6 +108,7 @@ mod tests {
     #[tokio::test]
     async fn type_filter_limits_kinds() {
         let r = detect("a@b.co 13800138000", None, Some(&[PiiKind::Phone])).await;
+        assert!(!r.entities.is_empty(), "expected at least one Phone entity");
         assert!(r.entities.iter().all(|e| e.kind == PiiKind::Phone));
     }
 }
