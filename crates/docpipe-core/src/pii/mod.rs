@@ -1,5 +1,8 @@
 //! PII 检测：确定性正则 + LLM NER + 可逆脱敏（spec 2026-06-25-docpipe-pii-detection）。
 
+mod patterns;
+pub use patterns::detect_regex;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
