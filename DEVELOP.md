@@ -16,6 +16,7 @@
 - [从 attune-enterprise docling-serve 迁移](#从-attune-enterprise-docling-serve-迁移)
 - [PII 检测模块](#pii-检测模块)
 - [Secret / PII 扫描](#secret--pii-扫描)
+- [PII NER 评测 (pii_ner_eval)](#pii-ner-评测-pii_ner_eval)
 - [已知限制与路线图](#已知限制与路线图)
 
 ---
@@ -389,6 +390,85 @@ pre-commit run gitleaks --all-files
 ```
 
 **CI**：GitHub Actions 的 CI workflow 同样在每次 push/PR 时运行 gitleaks，任何命中均阻断合并。
+
+---
+
+## PII NER 评测 (pii_ner_eval)
+
+### 目标
+
+`pii_ner_eval` 通过调用真实生产路径 `docpipe_core::pii::detect` 来衡量 LLM NER 对
+`person / address / org` 三类实体的 F1 精度，遵循 §4.5D 三档模型矩阵 + 多种子均值±标准差纪律。
+
+### 三档模型矩阵
+
+| 档位 | 默认模型 | 说明 |
+|------|---------|------|
+| **local** | `qwen2.5:3b`（Ollama） | 弱本地模型；**启动 Ollama + 拉取模型前须获得用户明确授权（§1.3）** |
+| **weak-cloud** | `deepseek-flash` | 弱云端；需设 `WEAK_BASE_URL` 和 key |
+| **strong-cloud** | `deepseek-v4` | 强云端对照；需设 `STRONG_BASE_URL` 和 key |
+
+spread（max – min f1_mean）≤ 0.15 → ALL-MODEL OK；否则标出最低可用档位。
+
+### 环境变量
+
+| 变量 | 说明 |
+|-----|------|
+| `DOCPIPE_PII_BASE_URL` | NER 端点（必填；未设时 eval 以 exit 2 退出） |
+| `DOCPIPE_PII_MODEL` | 模型名（默认 `deepseek-v4`） |
+| `DOCPIPE_PII_API_KEY` | Bearer token（可选） |
+| `WEAK_BASE_URL` / `WEAK_MODEL` / `WEAK_API_KEY` | 覆盖 weak-cloud 档位 |
+| `STRONG_BASE_URL` / `STRONG_MODEL` / `STRONG_API_KEY` | 覆盖 strong-cloud 档位 |
+| `SEEDS` | 每档重复次数（默认 3） |
+| `FLOOR` | 最低可接受 f1_mean（默认 0.60） |
+
+### 运行方式
+
+**单档手动运行**（已有端点时）：
+
+```bash
+export DOCPIPE_PII_BASE_URL=https://api.example.com/v1
+export DOCPIPE_PII_MODEL=deepseek-v4
+export DOCPIPE_PII_API_KEY=<从 /tmp/secrets-*/key.env 读取>
+cargo run --release --example pii_ner_eval -- --seeds 3
+```
+
+**三档完整编排**（目标机器上）：
+
+```bash
+# key 预先放在 /tmp/secrets-*/key.env（§1.4）
+export WEAK_BASE_URL=https://api.example.com/v1
+export STRONG_BASE_URL=https://api.example.com/v1
+bash scripts/pii-eval.sh --seeds 3
+# 报告输出至 reports/runs/<ts>/
+```
+
+报告 JSON 结构：
+
+```json
+{
+  "schema_version": 1, "harness": "pii_ner_eval", "harness_version": "1.0.0",
+  "model": "...", "endpoint_host": "...",
+  "provenance": "synthetic", "n_cases": 16, "seeds": 3,
+  "per_seed": [{"seed":1,"precision":...,"recall":...,"f1":...}, ...],
+  "f1_mean": ..., "f1_std": ..., "precision_mean": ..., "recall_mean": ...
+}
+```
+
+### §4.5D 判定 + synthetic→WARN 上限
+
+- spread ≤ 0.15 → **ALL-MODEL OK（无最低档位警告）**
+- spread > 0.15 → **MIN-TIER REQUIRED: \<最低 f1_mean ≥ FLOOR 的档位\>**
+- 当前语料为合成数据（`provenance: "synthetic"`）→ 判定上限为 advisory **WARN**，
+  不能作为硬性最低档位声明；需替换为策划语料后方可升级为 PASS。
+
+### 硬性约束
+
+- **仅在目标机器上运行（§1.6）**，不在开发主机执行。
+- **本地 3B（Ollama qwen2.5:3b）启动前须获得用户明确授权（§1.3）**；
+  脚本会在 Ollama 未运行时打印 BLOCKED 提示并跳过该档，不静默通过。
+- **API key 通过 `/tmp/secrets-*/key.env` 注入（§1.4）**；
+  脚本不硬编码任何密钥，报告 JSON 只输出 endpoint host（不含路径或凭据）。
 
 ---
 
