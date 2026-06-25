@@ -42,6 +42,44 @@ pub struct PiiEntity {
     pub source: PiiSource,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct DetectResult {
+    pub entities: Vec<PiiEntity>,
+    pub warnings: Vec<String>,
+}
+
+fn overlaps(a: &PiiEntity, b: &PiiEntity) -> bool {
+    a.start < b.end && b.start < a.end
+}
+
+/// 运行正则检测（始终）+ LLM NER（仅 ner.is_some() 时）。
+/// LLM 出错时降级：推入 warning 并继续返回正则结果（不 panic，不 5xx）。
+/// Regex 实体优先：与任何正则实体重叠的 LLM 实体被丢弃。
+/// `types` 过滤输出类别。
+pub async fn detect(text: &str, ner: Option<&LlmNer>, types: Option<&[PiiKind]>) -> DetectResult {
+    let mut entities = detect_regex(text);
+    let mut warnings = Vec::new();
+    if let Some(n) = ner {
+        match n.detect(text).await {
+            Ok(llm_ents) => {
+                for e in llm_ents {
+                    if !entities.iter().any(|r| r.source == PiiSource::Regex && overlaps(r, &e)) {
+                        entities.push(e);
+                    }
+                }
+            }
+            Err(reason) => warnings.push(format!(
+                "llm-unavailable: {reason}; name/address/org detection skipped"
+            )),
+        }
+    }
+    if let Some(t) = types {
+        entities.retain(|e| t.contains(&e.kind));
+    }
+    entities.sort_by_key(|e| e.start);
+    DetectResult { entities, warnings }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -58,5 +96,18 @@ mod tests {
         let j = serde_json::to_string(&e).unwrap();
         let back: PiiEntity = serde_json::from_str(&j).unwrap();
         assert_eq!(e, back);
+    }
+
+    #[tokio::test]
+    async fn regex_only_when_no_ner() {
+        let r = detect("邮箱 a@b.co", None, None).await;
+        assert!(r.entities.iter().any(|e| e.kind == PiiKind::Email));
+        assert!(r.warnings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn type_filter_limits_kinds() {
+        let r = detect("a@b.co 13800138000", None, Some(&[PiiKind::Phone])).await;
+        assert!(r.entities.iter().all(|e| e.kind == PiiKind::Phone));
     }
 }
