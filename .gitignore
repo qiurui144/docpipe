@@ -14,3 +14,4 @@ __pycache__/
 *.pyc
 # PDFium 预构建二进制（CI 期间下载，不入版本库）
 docker/pdfium/
+/.superpowers/
