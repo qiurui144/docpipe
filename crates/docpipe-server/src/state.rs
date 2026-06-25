@@ -13,6 +13,7 @@ pub struct AppState {
     pub mineru_configured: bool,
     pub jobs: crate::jobs::JobQueue,
     pub max_upload_bytes: usize,
+    pub ner: Option<docpipe_core::pii::LlmNer>,
 }
 
 impl AppState {
@@ -41,12 +42,21 @@ impl AppState {
             "lite".to_string()
         };
         let jobs = crate::jobs::JobQueue::new(cfg.max_ocr_concurrency);
+        let ner = {
+            let c = docpipe_core::pii::NerConfig::from_env();
+            if c.enabled {
+                Some(docpipe_core::pii::LlmNer::new(c))
+            } else {
+                None
+            }
+        };
         Ok(Self {
             sdk,
             ram_tier,
             mineru_configured,
             jobs,
             max_upload_bytes: cfg.max_upload_bytes,
+            ner,
         })
     }
 
@@ -103,6 +113,7 @@ impl AppState {
             mineru_configured: false,
             jobs: crate::jobs::JobQueue::new(2),
             max_upload_bytes: 500 * 1024 * 1024,
+            ner: None,
         }
     }
 }

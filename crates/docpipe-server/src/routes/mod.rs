@@ -8,6 +8,7 @@ pub mod health;
 pub mod ingest;
 pub mod jobs;
 pub mod parse;
+pub mod pii;
 pub mod search;
 
 use std::sync::Arc;
@@ -27,6 +28,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/v1/embed", post(embed::embed))
         .route("/v1/search", post(search::search))
         .route("/v1/annotate", post(annotate::annotate))
+        .route("/v1/detect-pii", post(pii::detect_pii))
         .route("/v1/health", get(health::health))
         .route("/v1/ingest", post(ingest::ingest))
         .route("/v1/documents", get(documents::list_documents))
