@@ -3,6 +3,9 @@
 mod patterns;
 pub use patterns::detect_regex;
 
+mod redact;
+pub use redact::redact_text;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
