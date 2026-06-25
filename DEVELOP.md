@@ -400,6 +400,26 @@ pre-commit run gitleaks --all-files
 `pii_ner_eval` 通过调用真实生产路径 `docpipe_core::pii::detect` 来衡量 LLM NER 对
 `person / address / org` 三类实体的 F1 精度，遵循 §4.5D 三档模型矩阵 + 多种子均值±标准差纪律。
 
+### 目标机最小环境
+
+eval 路径(`pii::detect`)只走 **正则(本地纯函数) + HTTP→OpenAI-compat LLM 端点**，
+**不触发** OCR / PDF / 向量检索。因此目标机**无需**部署 ONNX 模型文件、PDFium 运行库、
+Ollama-embeddings(bge-m3)或 MinerU —— 这些是完整产品其它能力的依赖，与本 eval 无关。
+
+目标机只需:
+
+1. **Rust toolchain**(stable)+ 本仓 checkout。
+2. **编译**(离线即可,`ort` 走 download-binaries):
+   ```bash
+   cargo build -p docpipe-core --release --example pii_ner_eval
+   ```
+   注:编译会连带构建 core crate 的 OCR/ONNX 依赖,但**运行** eval 时不加载任何模型 ——
+   只发 HTTP。
+3. **网络**可达三档 LLM 端点。
+4. **本地档可选**:Ollama 跑 `qwen2.5:3b`(`localhost:11434/v1`)—— **起 Ollama + 拉模型
+   前须 §1.3 授权**,脚本绝不自动启动;不授权则只跑云端两档,本地档记 BLOCKED。
+5. **key** 预置于目标机 `/tmp/secrets-*/key.env`(chmod 600,§1.4)。
+
 ### 三档模型矩阵
 
 | 档位 | 默认模型 | 说明 |
