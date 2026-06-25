@@ -114,21 +114,30 @@ pub async fn detect_pii(
             }
 
             // 从缓存结果构建带 page_num 的实体列表。
+            // 重叠区域的同一实体会在相邻 chunk 各出现一次，(page_num, start, end, kind) 四元组
+            // 相同即视为重复，保留第一次出现，避免响应和标注中各存两份。
+            let mut seen_keys: std::collections::HashSet<(u32, usize, usize, String)> =
+                std::collections::HashSet::new();
             let mut all_entities: Vec<serde_json::Value> = Vec::new();
             for (loc, res) in &loc_results {
                 for ent in &res.entities {
-                    let global_start = loc.char_offset as usize + ent.start;
-                    let global_end = loc.char_offset as usize + ent.end;
+                    let page_local_start = loc.char_offset as usize + ent.start;
+                    let page_local_end = loc.char_offset as usize + ent.end;
                     let kind_str = serde_json::to_value(ent.kind)
                         .unwrap_or(serde_json::Value::Null)
                         .as_str()
                         .unwrap_or("unknown")
                         .to_string();
+                    let key = (loc.page_num, page_local_start, page_local_end, kind_str.clone());
+                    if !seen_keys.insert(key) {
+                        // 重叠区域重复实体，跳过。
+                        continue;
+                    }
                     all_entities.push(serde_json::json!({
                         "kind":       kind_str,
                         "text":       ent.text,
-                        "start":      global_start,
-                        "end":        global_end,
+                        "start":      page_local_start,
+                        "end":        page_local_end,
                         "confidence": ent.confidence,
                         "source":     ent.source,
                         "page_num":   loc.page_num,
@@ -163,16 +172,24 @@ pub async fn detect_pii(
             }
 
             // annotate=true：从缓存的检测结果（与 entities 同源）为每个实体创建标注。
+            // 复用同一 seen_keys 集合跳过重叠区域的重复实体，保证标注数 == dedup 后实体数。
             if req.annotate {
+                let mut ann_seen: std::collections::HashSet<(u32, usize, usize, String)> =
+                    std::collections::HashSet::new();
                 let mut annotations: Vec<serde_json::Value> = Vec::new();
                 for (loc, res) in &loc_results {
                     for ent in &res.entities {
+                        let page_local_start = loc.char_offset as usize + ent.start;
+                        let page_local_end = loc.char_offset as usize + ent.end;
                         let kind_str = serde_json::to_value(ent.kind)
                             .unwrap_or(serde_json::Value::Null)
                             .as_str()
                             .unwrap_or("unknown")
                             .to_string();
-                        // page-local char_offset = loc.char_offset + ent.start
+                        let key = (loc.page_num, page_local_start, page_local_end, kind_str.clone());
+                        if !ann_seen.insert(key) {
+                            continue;
+                        }
                         let page_local_offset = loc.char_offset
                             + u32::try_from(ent.start).unwrap_or(u32::MAX);
                         let item = state.sdk.annotate(AnnotateRequest {
@@ -344,6 +361,81 @@ mod tests {
             assert!(
                 ann["item_id"].is_string(),
                 "annotation must have item_id string, got: {ann}"
+            );
+        }
+    }
+
+    /// 文档模式重叠 chunk 去重：entities 中不得有 (page_num, start, end, kind) 完全相同的两条；
+    /// annotate=true 时标注数必须等于 dedup 后实体数（不因 overlap 导致重复持久化）。
+    #[tokio::test]
+    async fn detect_pii_doc_mode_dedups_overlapping_chunks() {
+        let state = Arc::new(AppState::for_test());
+
+        // 构造一份 HTML：正文超过 512 字符（默认 chunk_size），确保被切成 ≥2 个有重叠的 chunk。
+        // 将 dup@b.co 放在正文中部，使其大概率落入相邻 chunk 的重叠区域。
+        // 即使 chunk 边界未精确命中重叠区，通用不变式（无重复四元组）同样有效。
+        let filler_a = "甲 ".repeat(120); // ~240 字节 UTF-8
+        let filler_b = "乙 ".repeat(120);
+        let body_text = format!(
+            "{filler_a}联系 dup@b.co 获取支持。{filler_b}"
+        );
+        let html = format!("<html><body>{body_text}</body></html>");
+
+        let r = state
+            .sdk
+            .ingest_file(
+                html.as_bytes(),
+                Some("overlap.html"),
+                docpipe_core::types::ParseConfig::default(),
+                "default",
+                "2026-06-25T00:00:00Z",
+            )
+            .await
+            .unwrap();
+
+        // doc_id 模式 + annotate=true
+        let req_body: DetectPiiReq = serde_json::from_value(serde_json::json!({
+            "doc_id": r.doc_id,
+            "annotate": true
+        }))
+        .unwrap();
+        let (status, body) =
+            detect_pii(axum::extract::State(state.clone()), axum::Json(req_body))
+                .await;
+
+        assert_eq!(status, StatusCode::OK, "expected 200, body: {}", body.0);
+
+        let entities = body.0["entities"]
+            .as_array()
+            .expect("entities must be an array");
+
+        // 通用不变式：不得有两条 (page_num, start, end, kind) 完全相同的实体。
+        let mut seen: std::collections::HashSet<(u64, u64, u64, String)> =
+            std::collections::HashSet::new();
+        for ent in entities {
+            let key = (
+                ent["page_num"].as_u64().unwrap_or(0),
+                ent["start"].as_u64().unwrap_or(0),
+                ent["end"].as_u64().unwrap_or(0),
+                ent["kind"].as_str().unwrap_or("").to_string(),
+            );
+            assert!(
+                seen.insert(key.clone()),
+                "duplicate entity (page_num={}, start={}, end={}, kind={}) in response",
+                key.0, key.1, key.2, key.3
+            );
+        }
+
+        // 标注数必须等于 dedup 后实体数（无重复持久化）。
+        if let Some(annotations) = body.0["annotations"].as_array() {
+            assert_eq!(
+                annotations.len(),
+                entities.len(),
+                "annotations.len() should equal deduped entities.len(), \
+                 but got {} annotations for {} entities; body: {}",
+                annotations.len(),
+                entities.len(),
+                body.0
             );
         }
     }
