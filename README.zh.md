@@ -75,17 +75,32 @@ docker compose -f docker/full/docker-compose.yml up    # Full 层（+ MinerU sid
 | 方法 | 路径 | 职责 |
 |---|---|---|
 | POST | `/v1/parse` | multipart 文件 → `ParsedDocument`（text + blocks + tables） |
+| POST | `/v1/ingest` | multipart 文件 → parse/OCR/chunk/embed/store 一步入库 |
 | POST | `/v1/chunk` | 文本 → 语义分块 |
 | POST | `/v1/embed` | 文本 → 向量 |
 | POST | `/v1/search` | query → 最近邻分块 |
 | POST | `/v1/annotate` | 创建一个批注项 |
+| GET  | `/v1/documents` | 文档列表 |
+| GET/DELETE | `/v1/documents/{doc_id}` | 文档详情 / 删除文档及向量 |
+| GET  | `/v1/jobs/{job_id}` | 异步 ingest 任务状态 |
 | GET  | `/v1/health` | 后端就绪状态 + 部署层级 |
 
 ```bash
-curl -F file=@scan.pdf http://localhost:8200/v1/parse
+curl -F file=@scan.pdf \
+  -F 'config={"collection":"default","ocr":true,"async":false}' \
+  http://localhost:8200/v1/ingest
 ```
 
 完整规范见 [`openapi.yaml`](./openapi.yaml)。
+
+### 调用逻辑
+
+推荐让原有系统负责**格式转换和业务编排**，让 `docpipe` 负责**解析/OCR/分块/向量化/入库/检索/批注定位**。
+也就是说，文档不需要先经过原系统 OCR 再导入；除非旧系统已有高质量、可追溯、带页码/坐标的 OCR 结果，否则直接把
+PDF / DOCX / HTML 交给 `/v1/ingest`。不支持的源格式（如 DOC、RTF、纯图片集）先转换成 PDF/DOCX/HTML。
+
+注意：当前扫描 PDF 会整页 OCR；文字层 PDF 优先使用文字层，DOCX/HTML 当前主要抽文本和表格，内嵌图片 OCR 是下一步
+需要补强的能力。
 
 ### Rust（直接链接核心库）
 
@@ -99,8 +114,8 @@ let sdk = DocpipeBuilder::new()
     .build()?;
 
 let parsed = sdk.parse(&bytes, ParseConfig::default()).await?;
-let ids    = sdk.ingest(&parsed, "default").await?;
-let hits   = sdk.search("梁素燕 2019 跨行汇款", "default", 5).await?;
+let ids    = sdk.ingest(&parsed, "default", Some("scan.pdf"), "2026-06-25T00:00:00Z").await?;
+let hits   = sdk.search("张三 2019 跨行汇款", "default", 5).await?;
 ```
 
 ### Python
@@ -109,6 +124,8 @@ let hits   = sdk.search("梁素燕 2019 跨行汇款", "default", 5).await?;
 from docpipe import DocpipeClient
 doc = DocpipeClient("http://localhost:8200").parse("scan.pdf")
 ```
+
+更多端到端调用样例见 [`examples/`](./examples/)。
 
 ## 已验证
 

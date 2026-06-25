@@ -1,4 +1,11 @@
-import type { ParsedDocument, SearchResult, HealthResponse } from "./types.js";
+import type {
+  DocumentInfo,
+  HealthResponse,
+  IngestResult,
+  Job,
+  ParsedDocument,
+  SearchResult,
+} from "./types.js";
 
 export class DocpipeClient {
   private baseUrl: string;
@@ -43,6 +50,22 @@ export class DocpipeClient {
     return this.handle(r) as Promise<ParsedDocument>;
   }
 
+  async ingest(file: Blob, opts: {
+    config?: Record<string, unknown>;
+    collection?: string;
+    async?: boolean;
+  } = {}): Promise<IngestResult | Job> {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("config", JSON.stringify({
+      ...(opts.config ?? {}),
+      collection: opts.collection ?? "default",
+      async: opts.async ?? false,
+    }));
+    const r = await fetch(`${this.baseUrl}/v1/ingest`, { method: "POST", body: form });
+    return this.handle(r) as Promise<IngestResult | Job>;
+  }
+
   async chunk(text: string, opts: { chunkSize?: number; overlap?: number; respectHeadings?: boolean } = {}): Promise<unknown[]> {
     const json = await this.post("/v1/chunk", {
       text,
@@ -74,5 +97,28 @@ export class DocpipeClient {
     source?: string; skill_metadata?: Record<string, unknown>;
   }): Promise<{ item_id: string; text_hash: string }> {
     return this.post("/v1/annotate", { source: "ai", ...req }) as Promise<{ item_id: string; text_hash: string }>;
+  }
+
+  async listDocuments(collection = "default"): Promise<DocumentInfo[]> {
+    const r = await fetch(`${this.baseUrl}/v1/documents?collection=${encodeURIComponent(collection)}`);
+    const json = await this.handle(r) as { documents: DocumentInfo[] };
+    return json.documents;
+  }
+
+  async getDocument(docId: string, collection = "default"): Promise<DocumentInfo> {
+    const r = await fetch(`${this.baseUrl}/v1/documents/${encodeURIComponent(docId)}?collection=${encodeURIComponent(collection)}`);
+    return this.handle(r) as Promise<DocumentInfo>;
+  }
+
+  async deleteDocument(docId: string, collection = "default"): Promise<{ deleted: boolean; doc_id: string }> {
+    const r = await fetch(`${this.baseUrl}/v1/documents/${encodeURIComponent(docId)}?collection=${encodeURIComponent(collection)}`, {
+      method: "DELETE",
+    });
+    return this.handle(r) as Promise<{ deleted: boolean; doc_id: string }>;
+  }
+
+  async getJob(jobId: string): Promise<Job> {
+    const r = await fetch(`${this.baseUrl}/v1/jobs/${encodeURIComponent(jobId)}`);
+    return this.handle(r) as Promise<Job>;
   }
 }

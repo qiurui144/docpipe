@@ -54,4 +54,49 @@ describe("DocpipeClient", () => {
     const c = new DocpipeClient("http://docs");
     await expect(c.search("q")).rejects.toThrow("http-502");
   });
+
+  it("ingest sends multipart config and returns result", async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({
+        doc_id: "d1",
+        collection: "cases",
+        chunk_count: 1,
+        chunk_ids: ["d1:c1"],
+        backend: "text-layer",
+        ocr_used: false,
+      }), { status: 200 })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const c = new DocpipeClient("http://docs");
+    const res = await c.ingest(new Blob(["<html>hi</html>"]), { collection: "cases" });
+    expect("doc_id" in res && res.doc_id).toBe("d1");
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://docs/v1/ingest");
+    expect((init as RequestInit).method).toBe("POST");
+    expect((init as RequestInit).body).toBeInstanceOf(FormData);
+  });
+
+  it("documents and jobs use expected paths", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes("/v1/documents/d1") && init?.method === "DELETE") {
+        return new Response(JSON.stringify({ deleted: true, doc_id: "d1" }), { status: 200 });
+      }
+      if (url.includes("/v1/documents/d1")) {
+        return new Response(JSON.stringify({
+          doc_id: "d1", collection: "cases", filename: "x.pdf", format: "pdf",
+          page_count: 1, chunk_count: 1, created_at: "now",
+        }), { status: 200 });
+      }
+      if (url.includes("/v1/documents")) {
+        return new Response(JSON.stringify({ documents: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ job_id: "j1", status: "done", created_at: "now", result: null, error: null }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const c = new DocpipeClient("http://docs");
+    expect(await c.listDocuments("cases")).toEqual([]);
+    expect((await c.getDocument("d1", "cases")).filename).toBe("x.pdf");
+    expect((await c.deleteDocument("d1", "cases")).deleted).toBe(true);
+    expect((await c.getJob("j1")).status).toBe("done");
+  });
 });

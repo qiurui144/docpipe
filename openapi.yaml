@@ -58,6 +58,52 @@ paths:
               example:
                 error: parse-empty-result
 
+  /ingest:
+    post:
+      summary: 摄入文档并入库
+      operationId: ingestDocument
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: 已转换到支持格式的文档文件（PDF / DOCX / HTML）
+                config:
+                  type: string
+                  description: IngestConfig JSON 字符串，包含 ocr/table_structure/max_pages/dpi/collection/async
+      responses:
+        "200":
+          description: 同步摄入完成
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestResult"
+        "202":
+          description: 异步任务已排队
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "413":
+          description: 文件过大
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: 解析结果为空
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /chunk:
     post:
       summary: 文本分块
@@ -242,6 +288,114 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
+
+  /documents:
+    get:
+      summary: 文档列表
+      operationId: listDocuments
+      parameters:
+        - in: query
+          name: collection
+          schema:
+            type: string
+            default: default
+      responses:
+        "200":
+          description: 文档列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  documents:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DocumentInfo"
+
+  /documents/{doc_id}:
+    get:
+      summary: 文档详情
+      operationId: getDocument
+      parameters:
+        - in: path
+          name: doc_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: collection
+          schema:
+            type: string
+            default: default
+      responses:
+        "200":
+          description: 文档详情
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentInfo"
+        "404":
+          description: 文档不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: 删除文档及向量
+      operationId: deleteDocument
+      parameters:
+        - in: path
+          name: doc_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: collection
+          schema:
+            type: string
+            default: default
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                  doc_id:
+                    type: string
+        "404":
+          description: 文档不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /jobs/{job_id}:
+    get:
+      summary: 查询异步摄入任务
+      operationId: getJob
+      parameters:
+        - in: path
+          name: job_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 任务状态
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          description: 任务不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   schemas:
@@ -434,3 +588,75 @@ components:
           type: object
           additionalProperties: true
           description: 生成此标注的技能元数据
+    IngestResult:
+      type: object
+      required:
+        - doc_id
+        - collection
+        - chunk_count
+        - chunk_ids
+        - backend
+        - ocr_used
+      properties:
+        doc_id:
+          type: string
+        collection:
+          type: string
+        chunk_count:
+          type: integer
+        chunk_ids:
+          type: array
+          items:
+            type: string
+        backend:
+          type: string
+        ocr_used:
+          type: boolean
+    DocumentInfo:
+      type: object
+      required:
+        - doc_id
+        - collection
+        - format
+        - page_count
+        - chunk_count
+        - created_at
+      properties:
+        doc_id:
+          type: string
+        collection:
+          type: string
+        filename:
+          type: string
+          nullable: true
+        format:
+          type: string
+        page_count:
+          type: integer
+        chunk_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+    Job:
+      type: object
+      required:
+        - job_id
+        - status
+        - created_at
+      properties:
+        job_id:
+          type: string
+        status:
+          type: string
+          enum: [queued, running, done, failed]
+        created_at:
+          type: string
+          format: date-time
+        result:
+          allOf:
+            - $ref: '#/components/schemas/IngestResult'
+          nullable: true
+        error:
+          type: string
+          nullable: true

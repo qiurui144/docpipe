@@ -84,6 +84,7 @@ pub async fn ingest(
         let state2 = state.clone();
         let fname = filename;
         let ca = created_at.clone();
+        let ca_resp = created_at.clone();
         let job_id = state.jobs.submit(
             async move {
                 state2
@@ -93,9 +94,14 @@ pub async fn ingest(
             },
             created_at,
         );
+        // 202 body 与 Job schema 一致：含 created_at，避免 client 端反序列化缺字段
         Ok((
             StatusCode::ACCEPTED,
-            Json(serde_json::json!({ "job_id": job_id, "status": "queued" })),
+            Json(serde_json::json!({
+                "job_id": job_id,
+                "status": "queued",
+                "created_at": ca_resp,
+            })),
         ))
     } else {
         let r = state

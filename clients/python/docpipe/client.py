@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 import httpx
 
-from .models import ParsedDocument
+from .models import DocumentInfo, IngestResult, Job, ParsedDocument
 
 
 class DocpipeClient:
@@ -42,6 +42,71 @@ class DocpipeClient:
     def parse(self, path: str, config: Optional[dict] = None) -> ParsedDocument:
         with open(path, "rb") as f:
             return self.parse_bytes(f.read(), filename=path.split("/")[-1], config=config)
+
+    def ingest_bytes(
+        self,
+        data: bytes,
+        filename: str = "file",
+        config: Optional[dict] = None,
+        collection: str = "default",
+        async_: bool = False,
+    ) -> IngestResult | Job:
+        cfg: dict[str, Any] = {"collection": collection, "async": async_}
+        if config:
+            cfg.update(config)
+        files = {"file": (filename, data)}
+        r = self._client.post(
+            f"{self.base_url}/v1/ingest",
+            files=files,
+            data={"config": json.dumps(cfg)},
+        )
+        r.raise_for_status()
+        payload = r.json()
+        if async_:
+            return Job(**payload)
+        return IngestResult(**payload)
+
+    def ingest(
+        self,
+        path: str,
+        config: Optional[dict] = None,
+        collection: str = "default",
+        async_: bool = False,
+    ) -> IngestResult | Job:
+        with open(path, "rb") as f:
+            return self.ingest_bytes(
+                f.read(),
+                filename=path.split("/")[-1],
+                config=config,
+                collection=collection,
+                async_=async_,
+            )
+
+    def list_documents(self, collection: str = "default") -> list[DocumentInfo]:
+        r = self._client.get(
+            f"{self.base_url}/v1/documents", params={"collection": collection}
+        )
+        r.raise_for_status()
+        return [DocumentInfo(**d) for d in r.json()["documents"]]
+
+    def get_document(self, doc_id: str, collection: str = "default") -> DocumentInfo:
+        r = self._client.get(
+            f"{self.base_url}/v1/documents/{doc_id}", params={"collection": collection}
+        )
+        r.raise_for_status()
+        return DocumentInfo(**r.json())
+
+    def delete_document(self, doc_id: str, collection: str = "default") -> dict[str, Any]:
+        r = self._client.delete(
+            f"{self.base_url}/v1/documents/{doc_id}", params={"collection": collection}
+        )
+        r.raise_for_status()
+        return r.json()
+
+    def get_job(self, job_id: str) -> Job:
+        r = self._client.get(f"{self.base_url}/v1/jobs/{job_id}")
+        r.raise_for_status()
+        return Job(**r.json())
 
     def chunk(
         self,

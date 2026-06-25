@@ -9,6 +9,7 @@
   - [ONNX 模型自动下载](#onnx-模型自动下载)
 - [服务器运行](#服务器运行)
   - [环境变量说明](#环境变量说明)
+- [调用逻辑线](#调用逻辑线)
 - [运行测试](#运行测试)
 - [Lite vs Full 部署决策](#lite-vs-full-部署决策)
 - [客户端生成说明](#客户端生成说明)
@@ -162,6 +163,65 @@ cargo run -p docpipe-server
 | `MAX_OCR_CONCURRENCY` | `2` | 并发 OCR 任务上限 |
 | `PDFIUM_DYNAMIC_LIB_PATH` | 未设置 | libpdfium.so 绝对路径（未设置时 PDF 解析会报错） |
 | `LOG_LEVEL` | `info` | 日志级别（trace/debug/info/warn/error） |
+
+---
+
+## 调用逻辑线
+
+### 职责边界
+
+`docpipe` 是文档进入审阅系统前的统一处理管线，默认负责 **解析、OCR、分块、向量化、入库、检索、批注定位**。
+原有业务系统只建议保留两类职责：
+
+1. **格式转换**：把不支持的源文件转换成 docpipe 支持的输入格式。
+2. **业务编排**：决定文档归属、collection、权限、审阅任务流、人工复核状态。
+
+除非原系统已经有可追溯、质量稳定、带页码/坐标的 OCR 结果，否则不建议先在原系统 OCR 再导入。重复 OCR 会带来文本不一致、定位漂移、图片文字漏审责任不清等问题。推荐把原始 PDF/DOCX/HTML 交给 `/v1/ingest`，由 docpipe 统一产出后续检索和批注所需的数据。
+
+### 推荐主流程
+
+```text
+原系统上传
+  -> 格式判断/转换
+     - PDF/DOCX/HTML: 直接进入 docpipe
+     - DOC/RTF/TXT/图片集/其他格式: 先转换成 PDF、DOCX 或 HTML
+  -> POST /v1/ingest
+     - docpipe parse/OCR/chunk/embed/store
+  -> POST /v1/search
+     - AI 审阅或用户检索取回相关片段
+  -> POST /v1/annotate
+     - 写入 AI 批注或人工批注定位信息
+  -> GET /v1/documents 或 GET /v1/jobs/{job_id}
+     - 查询文档生命周期或异步任务状态
+```
+
+### OCR 决策
+
+| 输入状态 | 推荐做法 | 原因 |
+|---------|----------|------|
+| 扫描 PDF | 直接 `/v1/ingest`，`ocr=true` | docpipe 会逐页渲染并 OCR |
+| 文字层 PDF | 直接 `/v1/ingest` | 当前优先使用文字层；若图片文字必须审阅，需启用后续的混合 OCR 能力 |
+| DOCX | 直接 `/v1/ingest` | 当前抽段落和表格；内嵌图片 OCR 是待补强项 |
+| HTML | 直接 `/v1/ingest` | 当前抽可见文本；图片 OCR 默认未覆盖 |
+| 已有原系统 OCR 文本 | 转成 HTML 后导入，或保留为业务侧旁路 | 只有当原 OCR 质量高且需要兼容旧结果时使用 |
+| 纯图片或图片集 | 先转 PDF 再导入 | 保留页概念，便于后续定位 |
+
+### 调用示例
+
+仓库内保留了三套可直接改造的调用样例：
+
+```bash
+# HTTP / curl
+DOCPIPE_URL=http://localhost:8200 ./examples/http-ingest-search.sh ./sample.pdf cases
+
+# Python SDK
+cd clients/python && pip install -e .
+DOCPIPE_URL=http://localhost:8200 python ../../examples/python_review_flow.py ./sample.pdf
+
+# TypeScript SDK
+cd clients/typescript && npm install
+DOCPIPE_URL=http://localhost:8200 npx tsx ../../examples/typescript-review-flow.ts ./sample.pdf
+```
 
 ---
 

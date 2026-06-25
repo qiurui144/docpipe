@@ -77,17 +77,34 @@ docker compose -f docker/full/docker-compose.yml up    # Full tier (+ MinerU sid
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/v1/parse` | multipart file → `ParsedDocument` (text + blocks + tables) |
+| POST | `/v1/ingest` | multipart file → parse/OCR/chunk/embed/store in one call |
 | POST | `/v1/chunk` | text → semantic chunks |
 | POST | `/v1/embed` | texts → embedding vectors |
 | POST | `/v1/search` | query → nearest chunks |
 | POST | `/v1/annotate` | create an annotation item |
+| GET  | `/v1/documents` | list ingested documents |
+| GET/DELETE | `/v1/documents/{doc_id}` | get/delete a document and its vectors |
+| GET  | `/v1/jobs/{job_id}` | async ingest job status |
 | GET  | `/v1/health` | backend readiness + tier |
 
 ```bash
-curl -F file=@scan.pdf http://localhost:8200/v1/parse
+curl -F file=@scan.pdf \
+  -F 'config={"collection":"default","ocr":true,"async":false}' \
+  http://localhost:8200/v1/ingest
 ```
 
 Full spec: [`openapi.yaml`](./openapi.yaml).
+
+### Call Flow
+
+The recommended boundary is: the existing system handles **format conversion and business workflow**;
+`docpipe` handles **parsing, OCR, chunking, embeddings, storage, search, and annotation locators**.
+Do not pre-OCR documents in the existing system unless that OCR output is already high-quality,
+traceable, and page/coordinate aware. Prefer sending PDF / DOCX / HTML directly to `/v1/ingest`.
+Unsupported source formats such as DOC, RTF, or image batches should be converted to PDF/DOCX/HTML first.
+
+Current coverage note: scanned PDFs are OCR'd page by page. Text-layer PDFs prefer the text layer.
+DOCX/HTML currently extract text and tables; embedded-image OCR is the next gap to close.
 
 ### Rust (link the core directly)
 
@@ -101,8 +118,8 @@ let sdk = DocpipeBuilder::new()
     .build()?;
 
 let parsed = sdk.parse(&bytes, ParseConfig::default()).await?;
-let ids    = sdk.ingest(&parsed, "default").await?;
-let hits   = sdk.search("梁素燕 2019 跨行汇款", "default", 5).await?;
+let ids    = sdk.ingest(&parsed, "default", Some("scan.pdf"), "2026-06-25T00:00:00Z").await?;
+let hits   = sdk.search("张三 2019 跨行汇款", "default", 5).await?;
 ```
 
 ### Python
@@ -111,6 +128,8 @@ let hits   = sdk.search("梁素燕 2019 跨行汇款", "default", 5).await?;
 from docpipe import DocpipeClient
 doc = DocpipeClient("http://localhost:8200").parse("scan.pdf")
 ```
+
+More end-to-end examples are available under [`examples/`](./examples/).
 
 ## Verified
 

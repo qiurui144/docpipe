@@ -10,3 +10,15 @@ export interface ParsedDocument {
 }
 export interface SearchResult { chunk_id: string; text: string; score: number; metadata: Record<string, unknown>; }
 export interface HealthResponse { status: string; backends: Record<string, string>; ram_tier: string; }
+export interface IngestResult {
+  doc_id: string; collection: string; chunk_count: number; chunk_ids: string[];
+  backend: string; ocr_used: boolean;
+}
+export interface DocumentInfo {
+  doc_id: string; collection: string; filename?: string | null; format: string;
+  page_count: number; chunk_count: number; created_at: string;
+}
+export interface Job {
+  job_id: string; status: "queued" | "running" | "done" | "failed"; created_at: string;
+  result?: IngestResult | null; error?: string | null;
+}

@@ -44,3 +44,30 @@ class SearchResult(BaseModel):
     text: str
     score: float
     metadata: dict[str, Any] = {}
+
+
+class IngestResult(BaseModel):
+    doc_id: str
+    collection: str
+    chunk_count: int
+    chunk_ids: list[str]
+    backend: str
+    ocr_used: bool
+
+
+class DocumentInfo(BaseModel):
+    doc_id: str
+    collection: str
+    filename: str | None = None
+    format: str
+    page_count: int
+    chunk_count: int
+    created_at: str
+
+
+class Job(BaseModel):
+    job_id: str
+    status: str
+    created_at: str
+    result: IngestResult | None = None
+    error: str | None = None
