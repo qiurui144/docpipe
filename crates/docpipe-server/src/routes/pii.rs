@@ -96,8 +96,10 @@ pub async fn detect_pii(
                 );
             }
 
-            // 逐 chunk 检测，产出带 page_num 的实体。
-            let mut all_entities: Vec<serde_json::Value> = Vec::new();
+            // 逐 chunk 检测一次，结果缓存供 entities 和 annotate 两处复用，
+            // 避免非确定性 LLM NER 路径产出两次不一致的结果。
+            let mut loc_results: Vec<(&docpipe_core::types::ChunkLocator, pii::DetectResult)> =
+                Vec::with_capacity(locators.len());
             let mut warnings_set: std::collections::BTreeSet<String> =
                 std::collections::BTreeSet::new();
 
@@ -108,6 +110,12 @@ pub async fn detect_pii(
                 for w in &res.warnings {
                     warnings_set.insert(w.clone());
                 }
+                loc_results.push((loc, res));
+            }
+
+            // 从缓存结果构建带 page_num 的实体列表。
+            let mut all_entities: Vec<serde_json::Value> = Vec::new();
+            for (loc, res) in &loc_results {
                 for ent in &res.entities {
                     let global_start = loc.char_offset as usize + ent.start;
                     let global_end = loc.char_offset as usize + ent.end;
@@ -154,17 +162,10 @@ pub async fn detect_pii(
                 body["mapping"] = serde_json::json!(map);
             }
 
-            // annotate=true：为每个 page-aware 实体创建标注。
+            // annotate=true：从缓存的检测结果（与 entities 同源）为每个实体创建标注。
             if req.annotate {
                 let mut annotations: Vec<serde_json::Value> = Vec::new();
-                // 再次遍历 locators，对每 chunk 重新检测（异步 detect 仅正则，代价极小）。
-                for loc in &locators {
-                    let res = pii::detect(
-                        &loc.text,
-                        state.ner.as_ref(),
-                        kinds.as_deref(),
-                    )
-                    .await;
+                for (loc, res) in &loc_results {
                     for ent in &res.entities {
                         let kind_str = serde_json::to_value(ent.kind)
                             .unwrap_or(serde_json::Value::Null)
@@ -172,7 +173,8 @@ pub async fn detect_pii(
                             .unwrap_or("unknown")
                             .to_string();
                         // page-local char_offset = loc.char_offset + ent.start
-                        let page_local_offset = loc.char_offset + ent.start as u32;
+                        let page_local_offset = loc.char_offset
+                            + u32::try_from(ent.start).unwrap_or(u32::MAX);
                         let item = state.sdk.annotate(AnnotateRequest {
                             doc_id: doc_id.clone(),
                             original_text: ent.text.clone(),
