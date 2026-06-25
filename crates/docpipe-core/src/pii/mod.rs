@@ -6,6 +6,9 @@ pub use patterns::detect_regex;
 mod redact;
 pub use redact::redact_text;
 
+pub mod llm;
+pub use llm::{LlmNer, NerConfig};
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
