@@ -21,4 +21,6 @@ pub trait VectorStore: Send + Sync {
     async fn register_document(&self, info: &DocumentInfo) -> Result<()>;
     async fn list_documents(&self, collection: &str) -> Result<Vec<DocumentInfo>>;
     async fn get_document(&self, doc_id: &str, collection: &str) -> Result<Option<DocumentInfo>>;
+    /// 按插入顺序返回该文档所有 chunk 的文本（chunk_id LIKE "{doc_id}:%"）。
+    async fn chunks_for_document(&self, doc_id: &str, collection: &str) -> Result<Vec<String>>;
 }

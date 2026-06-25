@@ -350,6 +350,32 @@ impl VectorStore for SqliteVecStore {
             None => Ok(None),
         }
     }
+
+    /// 按插入顺序（rowid ASC）返回 doc_id 的所有 chunk 文本。
+    async fn chunks_for_document(&self, doc_id: &str, collection: &str) -> Result<Vec<String>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| DocError::VectorStoreError("lock".into()))?;
+        let prefix = format!("{doc_id}:%");
+        let mut stmt = conn
+            .prepare(
+                "SELECT text FROM chunk_meta
+                 WHERE chunk_id LIKE ?1 AND coll = ?2
+                 ORDER BY rowid ASC",
+            )
+            .map_err(|e| DocError::VectorStoreError(format!("chunks_for_document prep: {e}")))?;
+        let rows = stmt
+            .query_map(rusqlite::params![prefix, collection], |r| r.get(0))
+            .map_err(|e| DocError::VectorStoreError(format!("chunks_for_document query: {e}")))?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(
+                row.map_err(|e| DocError::VectorStoreError(format!("chunks_for_document row: {e}")))?,
+            );
+        }
+        Ok(out)
+    }
 }
 
 #[cfg(test)]

@@ -250,6 +250,16 @@ impl Docpipe {
     pub async fn embed_texts(&self, texts: &[&str]) -> crate::error::Result<Vec<Vec<f32>>> {
         self.embedder.embed_batch(texts).await
     }
+
+    /// 返回文档的完整文本（各 chunk 按存储顺序拼接，`\n` 分隔）。
+    /// 若 doc_id 不存在（无 chunk），返回 `DocError::DocumentNotFound`。
+    pub async fn document_text(&self, doc_id: &str, collection: &str) -> Result<String> {
+        let chunks = self.store.chunks_for_document(doc_id, collection).await?;
+        if chunks.is_empty() {
+            return Err(DocError::DocumentNotFound);
+        }
+        Ok(chunks.join("\n"))
+    }
 }
 
 #[cfg(test)]
@@ -375,6 +385,38 @@ mod tests {
             .filter(|r| r.chunk_id.starts_with("docY:"))
             .count();
         assert_eq!(from_docy, 1);
+    }
+
+    /// 构建一个 SDK 实例，并将 `chunks` 作为单页文档 `doc_id` 写入 `collection`。
+    async fn test_sdk_with_doc(doc_id: &str, collection: &str, chunks: &[&str]) -> Docpipe {
+        let sdk = build_sdk();
+        let text = chunks.join("\n");
+        let parsed = crate::types::ParsedDocument {
+            doc_id: doc_id.into(),
+            format: crate::types::DocFormat::Html,
+            page_count: 1,
+            ocr_used: false,
+            backend: crate::types::OcrBackendKind::TextLayer,
+            pages: vec![crate::types::PageContent {
+                page_num: 1,
+                text,
+                blocks: vec![],
+                tables: vec![],
+            }],
+            warnings: vec![],
+        };
+        sdk.ingest(&parsed, collection, None, "2026-06-24T00:00:00Z")
+            .await
+            .unwrap();
+        sdk
+    }
+
+    #[tokio::test]
+    async fn document_text_concatenates_chunks() {
+        let sdk = test_sdk_with_doc("d1", "default", &["第一段 a@b.co", "第二段 某甲"]).await;
+        let t = sdk.document_text("d1", "default").await.unwrap();
+        assert!(t.contains("a@b.co") && t.contains("某甲"));
+        assert!(sdk.document_text("nope", "default").await.is_err());
     }
 
     #[tokio::test]
